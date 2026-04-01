@@ -89,10 +89,9 @@ return Date.now();
 function ensureDevice(id) {
 if (!devices[id]) {
 devices[id] = {
-pump: "OFF",
+  pump: "OFF",
 
-```
-  // 🔥 LIGHTS
+  // LIGHTS
   lights: {},
   allLights: "OFF",
 
@@ -101,9 +100,6 @@ pump: "OFF",
   manualOverrideUntil: null,
   lastSeen: null
 };
-```
-
-}
 
 if (!logs[id]) {
 logs[id] = {
