@@ -8,9 +8,7 @@ app.use(express.json());
 // =====================
 // CONFIG
 // =====================
-const DATA_DIR = process.env.NODE_ENV === "production"
-  ? "/data"
-  : path.join(__dirname, "data");
+const DATA_DIR = path.join(__dirname, "data");
 
 const DEVICES_FILE = path.join(DATA_DIR, "devices.json");
 const LOGS_FILE = path.join(DATA_DIR, "logs.json");
