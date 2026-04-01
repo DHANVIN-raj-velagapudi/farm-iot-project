@@ -258,12 +258,119 @@ x-device-token: SECRET123
 
 # ☁️ Deployment
 
-Backend is designed for:
+This backend is designed to be **platform-independent** and can run on any Node.js hosting provider.
 
-* Fly.io deployment
-* Persistent storage via volume
+## ✅ Supported Platforms
+
+* Fly.io (recommended for simplicity)
+* Render
+* Railway
+* VPS (Ubuntu + Node.js)
+* Docker-based hosting
 
 ---
+
+## ⚙️ Requirements
+
+* Node.js (v18+ recommended)
+* Persistent storage (for JSON files)
+
+---
+
+## 📦 Important Notes for Different Hosting
+
+### 1. PORT Configuration
+
+Make sure your server uses:
+
+```js
+const PORT = process.env.PORT || 3000;
+```
+
+---
+
+### 2. Persistent Storage (CRITICAL)
+
+This project uses JSON files for storage.
+
+#### If your platform has ephemeral storage (like Fly.io, Render free tier):
+
+You MUST configure persistent storage:
+
+* Fly.io → use volumes (`/data`)
+* Render → use disk storage
+* VPS → normal filesystem works
+
+---
+
+### 3. Changing Storage Path
+
+Update this in code if needed:
+
+```js
+const DATA_DIR = process.env.NODE_ENV === "production"
+  ? "/data"
+  : "./data";
+```
+
+---
+
+## 🗄️ Using a Database (Optional Upgrade)
+
+You can replace JSON storage with a database for scalability.
+
+### Example Options:
+
+* MongoDB
+* PostgreSQL
+* Firebase / Supabase
+
+---
+
+### What to Change:
+
+#### 1. Replace file storage functions:
+
+* remove `safeWrite`
+* remove write queue
+
+#### 2. Replace with DB queries:
+
+Example:
+
+```js
+// instead of JSON write
+await db.insert("pumpEvents", data);
+```
+
+---
+
+#### 3. Data Mapping
+
+| JSON         | Database      |
+| ------------ | ------------- |
+| devices.json | devices table |
+| logs.json    | logs table    |
+
+---
+
+### Example Use Case
+
+* Multiple farms (true multi-device support)
+* High-frequency sensor data
+* Real-time dashboards
+
+---
+
+## 🧠 Recommendation
+
+* Use JSON storage → for MVP / small scale
+* Use database → for production scale
+
+---
+
+This design ensures the backend remains **flexible, portable, and scalable** across different environments.
+
 
 # 👨‍💻 Author
 
