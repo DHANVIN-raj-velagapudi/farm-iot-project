@@ -399,8 +399,9 @@ await enqueueWrite();
 // START
 // =====================
 init().then(() => {
-app.listen(3000, () => {
-console.log("🚀 Backend running (FINAL WITH LIGHTS)");
-});
+const PORT = process.env.PORT || 3000;
+  
+app.listen(PORT, () => {
+  console.log("🚀 Backend running on", PORT);
 });
 
