@@ -11,21 +11,40 @@ A real-world IoT backend for controlling irrigation pumps and multiple lights us
 * Conflict-safe logic (timer > manual > schedule)
 * 7-day data retention
 * JSON-based storage (no database)
-* Fly.io deployment ready
+* Platform-independent deployment (Fly.io, Render, VPS, etc.)
 
 ---
 
 # ⚠️ Current Limitation
 
 * Multi-device (multiple farms) is **not fully supported yet**
-* Current system works for **one physical unit with multiple actuators**
-* Multi-farm support will be added later
+* Currently designed for **one physical unit with multiple actuators**
+* Multi-farm support will be added in future versions
+
+---
+
+# 📁 Project Structure
+
+```
+project/
+│── server.js
+│── package.json
+│── fly.toml
+│── .gitignore
+│
+├── data/
+│    ├── devices.json
+│    ├── logs.json
+```
+
+* `devices.json` → current system state
+* `logs.json` → historical data
 
 ---
 
 # 🛠️ Setup Instructions
 
-## 1. Clone repo
+## 1. Clone repository
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/farm-iot-project.git
@@ -58,13 +77,23 @@ node server.js
 
 ---
 
-## 5. Authentication
+# 🔐 Authentication
 
 All requests require header:
 
-```json
+```
 x-device-token: SECRET123
 ```
+
+## ⚙️ Changing the Token
+
+Update this in `server.js`:
+
+```js
+const DEVICE_TOKEN = "YOUR_SECRET_TOKEN";
+```
+
+👉 For production, use environment variables instead of hardcoding.
 
 ---
 
@@ -76,10 +105,20 @@ x-device-token: SECRET123
 
 ### POST `/data`
 
+**Request:**
+
 ```json
 {
   "device_id": "farm_1",
   "moisture": 45
+}
+```
+
+**Response:**
+
+```json
+{
+  "ok": true
 }
 ```
 
@@ -89,7 +128,7 @@ x-device-token: SECRET123
 
 ### POST `/control`
 
-### Turn ON with timer (example: 1 hour)
+### Turn ON with timer (1 hour)
 
 ```json
 {
@@ -124,9 +163,26 @@ x-device-token: SECRET123
 
 ---
 
+### Response:
+
+```json
+{
+  "ok": true,
+  "device": {
+    "pump": "ON",
+    "activeSession": {
+      "started_at": 1710000000,
+      "ends_at": 1710003600
+    }
+  }
+}
+```
+
+---
+
 ## 3. Lights Control
 
-### Add light
+### Add Light
 
 ```json
 {
@@ -137,7 +193,7 @@ x-device-token: SECRET123
 
 ---
 
-### Turn all ON
+### Turn All Lights ON
 
 ```json
 {
@@ -148,7 +204,7 @@ x-device-token: SECRET123
 
 ---
 
-### Control single light
+### Control Single Light
 
 ```json
 {
@@ -160,11 +216,26 @@ x-device-token: SECRET123
 
 ---
 
+### Response:
+
+```json
+{
+  "ok": true,
+  "lights": {
+    "light_1": "ON",
+    "light_2": "OFF"
+  },
+  "allLights": "MIXED"
+}
+```
+
+---
+
 ## 4. Device Poll (ESP)
 
 ### GET `/control?device_id=farm_1`
 
-### Response:
+**Response:**
 
 ```json
 {
@@ -186,13 +257,44 @@ x-device-token: SECRET123
 
 ---
 
-# ⚙️ System Behavior (IMPORTANT)
+# ⚡ Quick Test (cURL)
+
+### Send moisture data
+
+```bash
+curl -X POST http://localhost:3000/data \
+-H "Content-Type: application/json" \
+-H "x-device-token: SECRET123" \
+-d '{
+  "device_id": "farm_1",
+  "moisture": 50
+}'
+```
+
+---
+
+### Turn pump ON
+
+```bash
+curl -X POST http://localhost:3000/control \
+-H "Content-Type: application/json" \
+-H "x-device-token: SECRET123" \
+-d '{
+  "device_id": "farm_1",
+  "action": "ON",
+  "duration": 60
+}'
+```
+
+---
+
+# ⚙️ System Behavior
 
 ## Priority Rules
 
 1. Timer (highest priority)
 2. Manual control
-3. Schedule (lowest)
+3. Schedule (lowest priority)
 
 ---
 
@@ -201,7 +303,7 @@ x-device-token: SECRET123
 * Schedule ON
 * User presses OFF
 
-👉 Pump stays OFF (manual override)
+👉 Pump remains OFF (manual override)
 
 ---
 
@@ -212,18 +314,14 @@ x-device-token: SECRET123
 
 ---
 
----
-
 # 💡 Lights Behavior
 
-* Supports unlimited lights (max 30)
+* Supports dynamic lights (max 30)
 * `allLights` values:
 
   * `ON` → all lights ON
   * `OFF` → all lights OFF
-  * `MIXED` → some ON, some OFF
-
----
+  * `MIXED` → partial ON/OFF
 
 ---
 
@@ -231,42 +329,29 @@ x-device-token: SECRET123
 
 ## Storage
 
-### devices.json
-
-* Current state (pump, lights, schedule)
-
-### logs.json
-
-* Moisture history
-* Pump events
-* Light events
-
----
+* `devices.json` → current system state
+* `logs.json` → historical logs
 
 ## Backend Logic
 
-* Write queue → prevents file corruption
-* Atomic writes → safe storage
-* Background loop (every 5 sec):
+* Write queue → prevents data corruption
+* Atomic writes → safe file updates
+* Background loop (every 5 seconds):
 
-  * checks timer expiry
-  * handles schedule
-
----
+  * Handles timer expiry
+  * Applies schedule logic
 
 ---
 
 # ☁️ Deployment
 
-This backend is designed to be **platform-independent** and can run on any Node.js hosting provider.
+This backend is platform-independent and can run on:
 
-## ✅ Supported Platforms
-
-* Fly.io (recommended for simplicity)
+* Fly.io
 * Render
 * Railway
-* VPS (Ubuntu + Node.js)
-* Docker-based hosting
+* VPS (Node.js)
+* Docker
 
 ---
 
@@ -277,11 +362,9 @@ This backend is designed to be **platform-independent** and can run on any Node.
 
 ---
 
-## 📦 Important Notes for Different Hosting
+## 📦 Important Notes
 
-### 1. PORT Configuration
-
-Make sure your server uses:
+### PORT configuration
 
 ```js
 const PORT = process.env.PORT || 3000;
@@ -289,23 +372,17 @@ const PORT = process.env.PORT || 3000;
 
 ---
 
-### 2. Persistent Storage (CRITICAL)
+### Persistent storage (CRITICAL)
 
-This project uses JSON files for storage.
-
-#### If your platform has ephemeral storage (like Fly.io, Render free tier):
-
-You MUST configure persistent storage:
+If using platforms with ephemeral storage:
 
 * Fly.io → use volumes (`/data`)
 * Render → use disk storage
-* VPS → normal filesystem works
+* VPS → no changes required
 
 ---
 
-### 3. Changing Storage Path
-
-Update this in code if needed:
+### Storage path
 
 ```js
 const DATA_DIR = process.env.NODE_ENV === "production"
@@ -315,11 +392,9 @@ const DATA_DIR = process.env.NODE_ENV === "production"
 
 ---
 
-## 🗄️ Using a Database (Optional Upgrade)
+# 🗄️ Optional: Database Upgrade
 
-You can replace JSON storage with a database for scalability.
-
-### Example Options:
+You can replace JSON storage with:
 
 * MongoDB
 * PostgreSQL
@@ -327,25 +402,14 @@ You can replace JSON storage with a database for scalability.
 
 ---
 
-### What to Change:
+### Required changes:
 
-#### 1. Replace file storage functions:
-
-* remove `safeWrite`
-* remove write queue
-
-#### 2. Replace with DB queries:
-
-Example:
-
-```js
-// instead of JSON write
-await db.insert("pumpEvents", data);
-```
+* Remove file write logic
+* Replace with database queries
 
 ---
 
-#### 3. Data Mapping
+### Mapping:
 
 | JSON         | Database      |
 | ------------ | ------------- |
@@ -353,24 +417,6 @@ await db.insert("pumpEvents", data);
 | logs.json    | logs table    |
 
 ---
-
-### Example Use Case
-
-* Multiple farms (true multi-device support)
-* High-frequency sensor data
-* Real-time dashboards
-
----
-
-## 🧠 Recommendation
-
-* Use JSON storage → for MVP / small scale
-* Use database → for production scale
-
----
-
-This design ensures the backend remains **flexible, portable, and scalable** across different environments.
-
 
 # 👨‍💻 Author
 
@@ -381,4 +427,4 @@ This design ensures the backend remains **flexible, portable, and scalable** acr
 * Android App Developer
 
 📺 YouTube: https://www.youtube.com/@TeluguCircuitLab
-👉 Follow for project tutorials and real-world builds (Telugu with english subtitles support)
+👉 Follow for project tutorials and real-world builds (Telugu with English subtitle support)
