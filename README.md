@@ -372,7 +372,9 @@ This repository includes a `fly.toml` configuration file.
 * Use the provided `fly.toml`
 * Configure persistent storage (volume required)
 * Set environment variables (e.g., `DEVICE_TOKEN`)
-
+⚠️ Note:
+The provided `fly.toml` uses the `bom` (Mumbai, India) region.
+If you are deploying from another location, update `primary_region` accordingly.
 ---
 
 ## ⚙️ Requirements
