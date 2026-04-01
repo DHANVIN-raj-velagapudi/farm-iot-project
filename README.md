@@ -345,46 +345,68 @@ curl -X POST http://localhost:3000/control \
 
 # ☁️ Deployment
 
-This backend is platform-independent and can run on:
+This backend is **platform-independent** and can run on multiple hosting providers.
 
-* Fly.io
+## 🌐 Supported Platforms
+
 * Render
+* Fly.io
 * Railway
 * VPS (Node.js)
 * Docker
 
 ---
 
+## 🧠 Current Deployment
+
+This project is currently deployed using **Render**.
+
+---
+
+## ⚙️ Fly.io Support
+
+This repository includes a `fly.toml` configuration file.
+
+👉 If you want to use Fly.io:
+
+* Use the provided `fly.toml`
+* Configure persistent storage (volume required)
+* Set environment variables (e.g., `DEVICE_TOKEN`)
+
+---
+
 ## ⚙️ Requirements
 
 * Node.js (v18+ recommended)
-* Persistent storage (for JSON files)
+* Persistent storage (required for JSON-based data)
 
 ---
 
 ## 📦 Important Notes
 
-### PORT configuration
+### 🔌 PORT Configuration
 
-```js
+```js id="nvb0zo"
 const PORT = process.env.PORT || 3000;
 ```
 
 ---
 
-### Persistent storage (CRITICAL)
+### 💾 Persistent Storage (CRITICAL)
 
-If using platforms with ephemeral storage:
+This project stores data using JSON files.
 
-* Fly.io → use volumes (`/data`)
-* Render → use disk storage
-* VPS → no changes required
+Platform behavior:
+
+* Fly.io → requires volume (`/data`)
+* Render → uses local filesystem or disk
+* VPS → default filesystem works
 
 ---
 
-### Storage path
+### 📁 Storage Path
 
-```js
+```js id="7bn0kl"
 const DATA_DIR = process.env.NODE_ENV === "production"
   ? "/data"
   : "./data";
@@ -392,9 +414,11 @@ const DATA_DIR = process.env.NODE_ENV === "production"
 
 ---
 
-# 🗄️ Optional: Database Upgrade
+## 🗄️ Optional: Database Upgrade
 
-You can replace JSON storage with:
+You can replace JSON storage with a database for scalability.
+
+### Options
 
 * MongoDB
 * PostgreSQL
@@ -402,21 +426,20 @@ You can replace JSON storage with:
 
 ---
 
-### Required changes:
+### Required Changes
 
-* Remove file write logic
+* Remove file-based storage logic
 * Replace with database queries
 
 ---
 
-### Mapping:
+### Data Mapping
 
-| JSON         | Database      |
-| ------------ | ------------- |
-| devices.json | devices table |
-| logs.json    | logs table    |
+| JSON File    | Database Table |
+| ------------ | -------------- |
+| devices.json | devices        |
+| logs.json    | logs           |
 
----
 
 # 👨‍💻 Author
 
