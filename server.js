@@ -15,7 +15,7 @@ const DATA_DIR = process.env.NODE_ENV === "production"
 const DEVICES_FILE = path.join(DATA_DIR, "devices.json");
 const LOGS_FILE = path.join(DATA_DIR, "logs.json");
 
-const DEVICE_TOKEN = "SECRET123";
+const DEVICE_TOKEN = process.env.DEVICE_TOKEN || "SECRET123";
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 const MAX_LIGHTS = 30;
 
