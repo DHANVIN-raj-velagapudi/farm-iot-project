@@ -22,7 +22,7 @@
   ],
 
   "author": "VELAGAPUDI DHANVIN RAJ",
-  "license": "SEE LICENSE IN TELUGUCIRCUITLAB-NONCOMMERCIAL-LICENSE.txt",
+  "license": "MIT",
 
   "dependencies": {
     "express": "^4.18.2"
