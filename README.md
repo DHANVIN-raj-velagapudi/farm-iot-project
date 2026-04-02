@@ -441,8 +441,14 @@ You can replace JSON storage with a database for scalability.
 | ------------ | -------------- |
 | devices.json | devices        |
 | logs.json    | logs           |
+----------------------------------------------------------------------------
+**license**
+This project is NOT licensed under MIT or any standard open-source license.
 
+It is released under the TeluguCircuitLab Non-Commercial License.
 
+See: TELUGUCIRCUITLAB-NONCOMMERCIAL-LICENSE.txt
+--------------------------------------------------------------------------
 # 👨‍💻 Author
 
 **VELAGAPUDI DHANVIN RAJ**
