@@ -1,10 +1,12 @@
 const express = require("express");
 const fs = require("fs").promises;
 const path = require("path");
+const cors = require("cors");
 
-const app = express();
+const app = express();     // ✅ FIRST create app
+
+app.use(cors());           // ✅ THEN use middleware
 app.use(express.json());
-
 // =====================
 // CONFIG
 // =====================
