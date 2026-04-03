@@ -1,105 +1,86 @@
+// =====================
+// IMPORTS
+// =====================
 const express = require("express");
 const fs = require("fs").promises;
 const path = require("path");
 const cors = require("cors");
-// =====================
-// FIREBASE SETUP
-// =====================
 const admin = require("firebase-admin");
 
+// =====================
+// FIREBASE
+// =====================
 const serviceAccount = JSON.parse(process.env.FIREBASE_KEY);
-
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
-});
-
+admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
 const db = admin.firestore();
-const app = express();     // ✅ FIRST create app
 
-app.use(cors());           // ✅ THEN use middleware
-app.use(express.json());
+// =====================
+// APP
+// =====================
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: "10kb" }));
+
 // =====================
 // CONFIG
 // =====================
 const DATA_DIR = path.join(__dirname, "data");
-
-const DEVICES_FILE = path.join(DATA_DIR, "devices.json");
-const LOGS_FILE = path.join(DATA_DIR, "logs.json");
+const STATE_FILE = path.join(DATA_DIR, "devices.json");
+const LOG_FILE = path.join(DATA_DIR, "logs.ndjson"); // append-only
 
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || "SECRET123";
-const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
-const MAX_LIGHTS = 30;
+
+const MAX_EVENTS = 500;
+const MAX_DEVICE_ID = 40;
+const MAX_DIRTY = 1000;
+const VALID = ["ON", "OFF"];
 
 // =====================
-// STATE
+// STATE (HOT)
 // =====================
 let devices = {};
-let logs = {};
+let dirtyDevices = new Set();
+let dirtyLogs = new Set();
 
 // =====================
-// SAFE WRITE QUEUE
+// METRICS (ROLLING)
 // =====================
-let queue = [];
-let writing = false;
+let metrics = [];
 
-async function safeWrite(file, data) {
-  const temp = file + ".tmp";
-  await fs.writeFile(temp, JSON.stringify(data, null, 2));
-  await fs.rename(temp, file);
+function recordMetric(type) {
+  metrics.push({ type, time: Date.now() });
+
+  // keep last 5 min
+  const cutoff = Date.now() - 5 * 60 * 1000;
+  metrics = metrics.filter(m => m.time > cutoff);
 }
 
-function enqueueWrite() {
-  return new Promise((resolve, reject) => {
-    queue.push({ resolve, reject });
-    processQueue();
-  });
+function getMetrics() {
+  const now = Date.now();
+  const lastMin = metrics.filter(m => now - m.time < 60000);
+
+  return {
+    requests_per_min: lastMin.filter(m => m.type === "req").length,
+    errors_per_min: lastMin.filter(m => m.type === "err").length,
+    ai_triggers_per_min: lastMin.filter(m => m.type === "ai").length
+  };
 }
 
-async function processQueue() {
-  if (writing || queue.length === 0) return;
+// =====================
+// SAFE STATE WRITE
+// =====================
+async function saveState() {
+  const temp = STATE_FILE + ".tmp";
+  await fs.writeFile(temp, JSON.stringify(devices));
+  await fs.rename(temp, STATE_FILE);
+}
 
-  writing = true;
-  const job = queue.shift();
-  
-  app.post("/control", auth, async (req, res) => {
-  const { device_id, action, duration, start_time, end_time } = req.body;
-
-  if (!device_id) {
-    return res.status(400).json({ error: "device_id required" });
-  }
-
-  if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
-    return res.status(400).json({ error: "Invalid action" });
-  }
-
-  ensureDevice(device_id);
-  const d = devices[device_id];
-  });
-  
-  app.post("/control", auth, async (req, res) => {
-  const { device_id, action, duration, start_time, end_time } = req.body;
-
-  if (!device_id) {
-    return res.status(400).json({ error: "device_id required" });
-  }
-
-  if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
-    return res.status(400).json({ error: "Invalid action" });
-  }
-res.json({ ok: true, device: d });
-    
-  ensureDevice(device_id);
-  const d = devices[device_id];
-  try {
-    await safeWrite(DEVICES_FILE, devices);
-    await safeWrite(LOGS_FILE, logs);
-    job.resolve();
-  } catch (err) {
-    job.reject(err);
-  } finally {
-    writing = false;
-    processQueue();
-  }
+// =====================
+// APPEND LOG (FAST)
+// =====================
+async function appendLog(entry) {
+  const line = JSON.stringify(entry) + "\n";
+  await fs.appendFile(LOG_FILE, line);
 }
 
 // =====================
@@ -109,412 +90,146 @@ async function init() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
   try {
-    devices = JSON.parse(await fs.readFile(DEVICES_FILE));
+    devices = JSON.parse(await fs.readFile(STATE_FILE));
   } catch {
     devices = {};
   }
-
-  try {
-    logs = JSON.parse(await fs.readFile(LOGS_FILE));
-  } catch {
-    logs = {};
-  }
-
-  recoverState();
 }
 
 // =====================
 // HELPERS
 // =====================
-function now() {
-  return Date.now();
-}
-
 function ensureDevice(id) {
+  if (!id || id.length > MAX_DEVICE_ID) throw new Error("Invalid device_id");
+
   if (!devices[id]) {
     devices[id] = {
       pump: "OFF",
-      lights: {
-  light_1: "OFF",
-  light_2: "OFF",
-  light_3: "OFF",
-  light_4: "OFF",
-  light_5: "OFF",
-  light_6: "OFF",
-  light_7: "OFF",
-  light_8: "OFF",
-  light_9: "OFF",
-  light_10: "OFF"
-},
-      allLights: "OFF",
-      activeSession: null,
       schedule: null,
-      manualOverrideUntil: null,
-      lastSeen: null
+      manualLockUntil: 0,
+      tzOffset: 0,
+      aiLastRun: 0
     };
   }
-
-  if (!logs[id]) {
-    logs[id] = {
-      moisture: [],
-      pumpEvents: [],
-      lightEvents: []
-    };
-  }
-}
-
-function cleanOld(arr) {
-  const cutoff = now() - SEVEN_DAYS;
-  return arr.filter(e => e.time >= cutoff);
-}
-
-// =====================
-// VALIDATION
-// =====================
-function isValidMoisture(m) {
-  return typeof m === "number" && m >= 0 && m <= 100;
-}
-
-function isValidDuration(d) {
-  return typeof d === "number" && d > 0 && d <= 21600;
-}
-
-function isValidTime(t) {
-  return /^\d{2}:\d{2}$/.test(t);
-}
-
-function isValidLightId(id) {
-  return typeof id === "string" &&
-    id.length > 0 &&
-    id.length < 30 &&
-    /^[a-zA-Z0-9_]+$/.test(id);
 }
 
 // =====================
 // AUTH
 // =====================
 function auth(req, res, next) {
+  recordMetric("req");
+
   if (req.headers["x-device-token"] !== DEVICE_TOKEN) {
+    recordMetric("err");
     return res.status(403).json({ error: "Unauthorized" });
   }
+
   next();
 }
 
 // =====================
-// CRASH RECOVERY
+// CONTROL WRITE
 // =====================
-function recoverState() {
-  const current = now();
+app.post("/control", auth, async (req, res) => {
+  try {
+    const { device_id, action } = req.body;
+    ensureDevice(device_id);
 
-  for (let id in devices) {
-    const d = devices[id];
+    const d = devices[device_id];
 
-    if (d.activeSession?.ends_at && current >= d.activeSession.ends_at) {
-      d.pump = "OFF";
-      d.activeSession = null;
+    if (action === "ON") {
+      d.pump = "ON";
+      d.manualLockUntil = Date.now() + 10 * 60 * 1000;
+
+      await appendLog({ device_id, event: "ON", time: Date.now() });
     }
+
+    if (action === "OFF") {
+      d.pump = "OFF";
+      d.manualLockUntil = Date.now() + 10 * 60 * 1000;
+
+      await appendLog({ device_id, event: "OFF", time: Date.now() });
+    }
+
+    dirtyDevices.add(device_id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    recordMetric("err");
+    res.status(400).json({ error: e.message });
   }
-}
+});
 
 // =====================
-// SENSOR DATA
+// SENSOR + AI
 // =====================
 app.post("/data", auth, async (req, res) => {
-  const { device_id, moisture } = req.body;
+  try {
+    const { device_id, moisture } = req.body;
 
-  if (!device_id || !isValidMoisture(moisture)) {
-    return res.status(400).json({ error: "Invalid input" });
-  }
+    ensureDevice(device_id);
+    const d = devices[device_id];
 
-  ensureDevice(device_id);
-
-  logs[device_id].moisture.push({
-    value: moisture,
-    time: now()
-  });
-    // 🔥 FIREBASE MOISTURE SAVE
-await db.collection("logs").doc(device_id).set({
-  moisture: admin.firestore.FieldValue.arrayUnion({
-    value: moisture,
-    time: Date.now()
-  })
-}, { merge: true });
-
-  // 🚨 LOW MOISTURE DETECTION
-const LOW_THRESHOLD = 30;
-
-const recent = logs[device_id].moisture.slice(-10); // last 10 readings
-
-const isLowForLong =
-  recent.length === 10 &&
-  recent.every(e => e.value < LOW_THRESHOLD);
-
-if (isLowForLong) {
-  console.log("⚠️ ALERT: Soil dry for long time:", device_id);
-
-  // 🔥 STORE ALERT IN FIREBASE
-  await db.collection("logs").doc(device_id).set({
-    alerts: admin.firestore.FieldValue.arrayUnion({
-      type: "LOW_MOISTURE",
+    await appendLog({
+      device_id,
+      type: "moisture",
+      value: moisture,
       time: Date.now()
-    })
-  }, { merge: true });
-}
-  
-  logs[device_id].moisture = cleanOld(logs[device_id].moisture);
+    });
 
-  devices[device_id].lastSeen = now();
+    // simple AI with cooldown
+    if (
+      moisture < 30 &&
+      d.pump === "OFF" &&
+      Date.now() - d.aiLastRun > 10 * 60 * 1000 &&
+      Date.now() > d.manualLockUntil
+    ) {
+      d.pump = "ON";
+      d.aiLastRun = Date.now();
 
-  await enqueueWrite();
+      recordMetric("ai");
 
-  res.json({ ok: true });
+      await appendLog({ device_id, event: "AI_ON", time: Date.now() });
+    }
+
+    dirtyDevices.add(device_id);
+
+    res.json({ ok: true });
+  } catch (e) {
+    recordMetric("err");
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // =====================
-// PUMP CONTROL 
+// CONTROL READ
 // =====================
-app.get("/control", auth, async (req, res) => {
-  const { device_id } = req.query;
-
-  if (!device_id) {
-    return res.status(400).json({ error: "device_id required" });
-  }
-
-  ensureDevice(device_id);
-  const d = devices[device_id];
-
+app.get("/control", auth, (req, res) => {
   try {
-    const doc = await db.collection("devices").doc(device_id).get();
+    const { device_id } = req.query;
+    ensureDevice(device_id);
 
-    if (doc.exists) {
-      const data = doc.data();
-
-      d.pump = data.pump || d.pump;
-      d.lights = data.lights || d.lights;
-      d.allLights = data.allLights || d.allLights;
-    }
-
-  } catch (err) {
-    console.error("Firestore fetch failed:", err);
+    res.json({
+      ...devices[device_id],
+      server_time: Date.now()
+    });
+  } catch (e) {
+    recordMetric("err");
+    res.status(400).json({ error: e.message });
   }
-
-  res.json({
-    pump: d.pump,
-    lights: d.lights,
-    allLights: d.allLights,
-    activeSession: d.activeSession,
-    schedule: d.schedule,
-    server_time: now()
-  });
-});
-
-  try {
-
-    // =====================
-    // TURN ON
-    // =====================
-    if (action === "ON") {
-      let endsAt = null;
-
-      if (duration) {
-        if (!isValidDuration(duration)) {
-          return res.status(400).json({ error: "Invalid duration" });
-        }
-        endsAt = now() + duration * 1000;
-      }
-
-      if (d.pump !== "ON") {
-        d.pump = "ON";
-
-        const event = { event: "ON", time: now() };
-        logs[device_id].pumpEvents.push(event);
-
-        // 🔥 FIREBASE WRITE (ONLY ONCE)
-        await db.collection("devices").doc(device_id).set({
-          pump: "ON"
-        }, { merge: true });
-
-        await db.collection("logs").doc(device_id).set({
-          pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
-        }, { merge: true });
-      }
-
-      d.activeSession = {
-        started_at: now(),
-        ends_at: endsAt
-      };
-
-      d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
-    }
-
-    // =====================
-    // TURN OFF
-    // =====================
-    if (action === "OFF") {
-      if (d.pump !== "OFF") {
-        d.pump = "OFF";
-
-        const event = { event: "OFF", time: now() };
-        logs[device_id].pumpEvents.push(event);
-
-        // 🔥 FIREBASE WRITE (ONLY ONCE)
-        await db.collection("devices").doc(device_id).set({
-          pump: "OFF"
-        }, { merge: true });
-
-        await db.collection("logs").doc(device_id).set({
-          pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
-        }, { merge: true });
-      }
-
-      d.activeSession = null;
-      d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
-    }
-
-    // =====================
-    // SCHEDULE
-    // =====================
-    if (start_time && end_time) {
-      if (!isValidTime(start_time) || !isValidTime(end_time)) {
-        return res.status(400).json({ error: "Invalid time format" });
-      }
-
-      d.schedule = { start_time, end_time };
-    }
-
-    await enqueueWrite();
-
-    res.json({ ok: true, device: d });
-
-  } catch (err) {
-    console.error("Firebase error:", err);
-    res.status(500).json({ error: "Firebase failed" });
-  }
-});
-// =====================
-// LIGHT CONTROL
-// =====================
-app.post("/lights", auth, async (req, res) => {
-  const { device_id, all_lights, light_id, state, add_light } = req.body;
-
-  if (!device_id) {
-    return res.status(400).json({ error: "device_id required" });
-  }
-
-  ensureDevice(device_id);
-  const d = devices[device_id];
-
-  if (add_light) {
-    if (!isValidLightId(add_light)) {
-      return res.status(400).json({ error: "Invalid light id" });
-    }
-
-    if (Object.keys(d.lights).length >= MAX_LIGHTS) {
-      return res.status(400).json({ error: "Max lights reached" });
-    }
-
-    if (!d.lights[add_light]) {
-      d.lights[add_light] = "OFF";
-    }
-  }
-
-  if (all_lights) {
-    if (!["ON", "OFF"].includes(all_lights)) {
-      return res.status(400).json({ error: "Invalid value" });
-    }
-
-    for (let l in d.lights) {
-      if (d.lights[l] !== all_lights) {
-        d.lights[l] = all_lights;
-        logs[device_id].lightEvents.push({ light: l, state: all_lights, time: now() });
-      }
-    }
-  }
-
-  if (light_id && state) {
-    if (!isValidLightId(light_id) || !["ON", "OFF"].includes(state)) {
-      return res.status(400).json({ error: "Invalid input" });
-    }
-
-    if (!d.lights[light_id]) {
-      return res.status(400).json({ error: "Light not found" });
-    }
-
-    if (d.lights[light_id] !== state) {
-      d.lights[light_id] = state;
-      logs[device_id].lightEvents.push({ light: light_id, state, time: now() });
-    }
-  }
-
-  const values = Object.values(d.lights);
-
-  if (values.length === 0) d.allLights = "OFF";
-  else if (values.every(v => v === "ON")) d.allLights = "ON";
-  else if (values.every(v => v === "OFF")) d.allLights = "OFF";
-  else d.allLights = "MIXED";
-
-  logs[device_id].lightEvents = cleanOld(logs[device_id].lightEvents);
-
-  await enqueueWrite();
-
-  res.json({
-    ok: true,
-    lights: d.lights,
-    allLights: d.allLights
-  });
-});
-
-// =====================
-// DEVICE POLL
-// =====================
-
-  ensureDevice(device_id);
-  const d = devices[device_id];
-
-  res.json({
-    pump: d.pump,
-    lights: d.lights,
-    allLights: d.allLights,
-    activeSession: d.activeSession,
-    schedule: d.schedule,
-    server_time: now()
-  });
 });
 
 // =====================
 // LOOP
 // =====================
-function isWithinSchedule(start, end, current) {
-  if (start <= end) return current >= start && current <= end;
-  return current >= start || current <= end;
-}
-
-setInterval(async () => {
-  const current = now();
-
+setInterval(() => {
   for (let id in devices) {
     const d = devices[id];
 
-    if (d.activeSession?.ends_at && current >= d.activeSession.ends_at) {
-  d.pump = "OFF";
-  d.activeSession = null;
-
-  const event = { event: "AUTO_OFF", time: current };
-  logs[id].pumpEvents.push(event);
-
-  // 🔥 FIREBASE SYNC (AUTO OFF)
-  await db.collection("devices").doc(id).set({
-    pump: "OFF"
-  }, { merge: true });
-
-  await db.collection("logs").doc(id).set({
-    pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
-  }, { merge: true });
-}
-
-    if (d.schedule && (!d.manualOverrideUntil || current > d.manualOverrideUntil)) {
-      const nowDate = new Date();
-      const cur = nowDate.getHours() * 60 + nowDate.getMinutes();
+    // schedule logic (timezone applied)
+    if (d.schedule && Date.now() > d.manualLockUntil) {
+      const t = new Date(Date.now() + d.tzOffset * 60000);
+      const cur = t.getHours() * 60 + t.getMinutes();
 
       const [sh, sm] = d.schedule.start_time.split(":").map(Number);
       const [eh, em] = d.schedule.end_time.split(":").map(Number);
@@ -522,52 +237,71 @@ setInterval(async () => {
       const start = sh * 60 + sm;
       const end = eh * 60 + em;
 
-      const active = isWithinSchedule(start, end, cur);
+      const active = start <= end
+        ? cur >= start && cur <= end
+        : cur >= start || cur <= end;
 
       if (active && d.pump !== "ON") {
         d.pump = "ON";
-        logs[id].pumpEvents.push({ event: "SCHEDULE_ON", time: current });
+        appendLog({ device_id: id, event: "SCHEDULE_ON", time: Date.now() });
       }
-      await db.collection("devices").doc(id).set({
-  pump: "ON"
-}, { merge: true });
-
-await db.collection("logs").doc(id).set({
-  pumpEvents: admin.firestore.FieldValue.arrayUnion({
-    event: "SCHEDULE_ON",
-    time: current
-  })
-}, { merge: true });
 
       if (!active && d.pump !== "OFF") {
         d.pump = "OFF";
-        logs[id].pumpEvents.push({ event: "SCHEDULE_OFF", time: current });
+        appendLog({ device_id: id, event: "SCHEDULE_OFF", time: Date.now() });
       }
     }
-    await db.collection("devices").doc(id).set({
-  pump: "OFF"
-}, { merge: true });
+  }
+}, 5000);
 
-await db.collection("logs").doc(id).set({
-  pumpEvents: admin.firestore.FieldValue.arrayUnion({
-    event: "SCHEDULE_OFF",
-    time: current
-  })
-}, { merge: true });
+// =====================
+// FIREBASE (SAFE)
+// =====================
+setInterval(async () => {
+  if (dirtyDevices.size > MAX_DIRTY) return;
 
-    logs[id].pumpEvents = cleanOld(logs[id].pumpEvents);
+  const tasks = [];
+
+  for (let id of dirtyDevices) {
+    tasks.push(db.collection("devices").doc(id).set(devices[id]));
   }
 
-  await enqueueWrite();
-}, 5000);
+  try {
+    await Promise.all(tasks);
+    dirtyDevices.clear();
+  } catch (e) {
+    recordMetric("err");
+  }
+}, 15000);
+
+// =====================
+// HEALTH
+// =====================
+app.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    devices: Object.keys(devices).length,
+    metrics: getMetrics()
+  });
+});
+
+// =====================
+// GRACEFUL SHUTDOWN
+// =====================
+async function shutdown() {
+  console.log("Saving before shutdown...");
+  await saveState();
+  process.exit();
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
 
 // =====================
 // START
 // =====================
 init().then(() => {
-  const PORT = process.env.PORT || 3000;
-
-  app.listen(PORT, () => {
-    console.log("🚀 Backend running on", PORT);
+  app.listen(3000, () => {
+    console.log("🚀 FINAL V4 BACKEND RUNNING");
   });
 });
