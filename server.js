@@ -210,6 +210,27 @@ await db.collection("logs").doc(device_id).set({
     time: Date.now()
   })
 }, { merge: true });
+
+  // 🚨 LOW MOISTURE DETECTION
+const LOW_THRESHOLD = 30;
+
+const recent = logs[device_id].moisture.slice(-10); // last 10 readings
+
+const isLowForLong =
+  recent.length === 10 &&
+  recent.every(e => e.value < LOW_THRESHOLD);
+
+if (isLowForLong) {
+  console.log("⚠️ ALERT: Soil dry for long time:", device_id);
+
+  // 🔥 STORE ALERT IN FIREBASE
+  await db.collection("logs").doc(device_id).set({
+    alerts: admin.firestore.FieldValue.arrayUnion({
+      type: "LOW_MOISTURE",
+      time: Date.now()
+    })
+  }, { merge: true });
+}
   
   logs[device_id].moisture = cleanOld(logs[device_id].moisture);
 
