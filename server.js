@@ -226,52 +226,82 @@ app.post("/control", auth, async (req, res) => {
   ensureDevice(device_id);
   const d = devices[device_id];
 
-  if (action === "ON") {
-    let endsAt = null;
+  try {
 
-    if (duration) {
-      if (!isValidDuration(duration)) {
-        return res.status(400).json({ error: "Invalid duration" });
+    if (action === "ON") {
+      let endsAt = null;
+
+      if (duration) {
+        if (!isValidDuration(duration)) {
+          return res.status(400).json({ error: "Invalid duration" });
+        }
+        endsAt = now() + duration * 1000;
       }
-      endsAt = now() + duration * 1000;
+
+      if (d.pump !== "ON") {
+        d.pump = "ON";
+        logs[device_id].pumpEvents.push({ event: "ON", time: now() });
+
+        // 🔥 FIREBASE UPDATE
+        await db.collection("devices").doc(device_id).set({
+          pump: "ON"
+        }, { merge: true });
+
+        await db.collection("logs").doc(device_id).set({
+          pumpEvents: admin.firestore.FieldValue.arrayUnion({
+            event: "ON",
+            time: Date.now()
+          })
+        }, { merge: true });
+      }
+
+      d.activeSession = {
+        started_at: now(),
+        ends_at: endsAt
+      };
+
+      d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
     }
 
-    if (d.pump !== "ON") {
-      d.pump = "ON";
-      logs[device_id].pumpEvents.push({ event: "ON", time: now() });
+    if (action === "OFF") {
+      if (d.pump !== "OFF") {
+        d.pump = "OFF";
+        logs[device_id].pumpEvents.push({ event: "OFF", time: now() });
+
+        // 🔥 FIREBASE UPDATE
+        await db.collection("devices").doc(device_id).set({
+          pump: "OFF"
+        }, { merge: true });
+
+        await db.collection("logs").doc(device_id).set({
+          pumpEvents: admin.firestore.FieldValue.arrayUnion({
+            event: "OFF",
+            time: Date.now()
+          })
+        }, { merge: true });
+      }
+
+      d.activeSession = null;
+      d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
     }
 
-    d.activeSession = {
-      started_at: now(),
-      ends_at: endsAt
-    };
+    if (start_time && end_time) {
+      if (!isValidTime(start_time) || !isValidTime(end_time)) {
+        return res.status(400).json({ error: "Invalid time format" });
+      }
 
-    d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
+      d.schedule = { start_time, end_time };
+    }
+
+    await enqueueWrite();
+
+    res.json({ ok: true, device: d });
+
+  } catch (err) {
+    console.error("Firebase error:", err);
+    res.status(500).json({ error: "Firebase failed" });
   }
-
-  if (action === "OFF") {
-    if (d.pump !== "OFF") {
-      d.pump = "OFF";
-      logs[device_id].pumpEvents.push({ event: "OFF", time: now() });
-    }
-
-    d.activeSession = null;
-    d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
-  }
-
-  if (start_time && end_time) {
-    if (!isValidTime(start_time) || !isValidTime(end_time)) {
-      return res.status(400).json({ error: "Invalid time format" });
-    }
-
-    d.schedule = { start_time, end_time };
-  }
-
-  await enqueueWrite();
-
-  res.json({ ok: true, device: d });
 });
-
 // =====================
 // LIGHT CONTROL
 // =====================
