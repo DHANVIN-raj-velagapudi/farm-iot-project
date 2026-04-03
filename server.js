@@ -86,7 +86,8 @@ async function processQueue() {
   if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
     return res.status(400).json({ error: "Invalid action" });
   }
-
+res.json({ ok: true, device: d });
+    
   ensureDevice(device_id);
   const d = devices[device_id];
   try {
