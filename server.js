@@ -473,10 +473,21 @@ setInterval(async () => {
     const d = devices[id];
 
     if (d.activeSession?.ends_at && current >= d.activeSession.ends_at) {
-      d.pump = "OFF";
-      d.activeSession = null;
-      logs[id].pumpEvents.push({ event: "AUTO_OFF", time: current });
-    }
+  d.pump = "OFF";
+  d.activeSession = null;
+
+  const event = { event: "AUTO_OFF", time: current };
+  logs[id].pumpEvents.push(event);
+
+  // 🔥 FIREBASE SYNC (AUTO OFF)
+  await db.collection("devices").doc(id).set({
+    pump: "OFF"
+  }, { merge: true });
+
+  await db.collection("logs").doc(id).set({
+    pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
+  }, { merge: true });
+}
 
     if (d.schedule && (!d.manualOverrideUntil || current > d.manualOverrideUntil)) {
       const nowDate = new Date();
