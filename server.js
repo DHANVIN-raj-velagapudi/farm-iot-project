@@ -514,12 +514,32 @@ setInterval(async () => {
         d.pump = "ON";
         logs[id].pumpEvents.push({ event: "SCHEDULE_ON", time: current });
       }
+      await db.collection("devices").doc(id).set({
+  pump: "ON"
+}, { merge: true });
+
+await db.collection("logs").doc(id).set({
+  pumpEvents: admin.firestore.FieldValue.arrayUnion({
+    event: "SCHEDULE_ON",
+    time: current
+  })
+}, { merge: true });
 
       if (!active && d.pump !== "OFF") {
         d.pump = "OFF";
         logs[id].pumpEvents.push({ event: "SCHEDULE_OFF", time: current });
       }
     }
+    await db.collection("devices").doc(id).set({
+  pump: "OFF"
+}, { merge: true });
+
+await db.collection("logs").doc(id).set({
+  pumpEvents: admin.firestore.FieldValue.arrayUnion({
+    event: "SCHEDULE_OFF",
+    time: current
+  })
+}, { merge: true });
 
     logs[id].pumpEvents = cleanOld(logs[id].pumpEvents);
   }
