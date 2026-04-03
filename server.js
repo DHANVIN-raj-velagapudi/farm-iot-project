@@ -94,7 +94,18 @@ function ensureDevice(id) {
   if (!devices[id]) {
     devices[id] = {
       pump: "OFF",
-      lights: {},
+      lights: {
+  light_1: "OFF",
+  light_2: "OFF",
+  light_3: "OFF",
+  light_4: "OFF",
+  light_5: "OFF",
+  light_6: "OFF",
+  light_7: "OFF",
+  light_8: "OFF",
+  light_9: "OFF",
+  light_10: "OFF"
+},
       allLights: "OFF",
       activeSession: null,
       schedule: null,
