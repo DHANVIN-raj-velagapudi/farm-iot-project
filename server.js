@@ -216,19 +216,40 @@ app.post("/data", auth, async (req, res) => {
 // =====================
 // PUMP CONTROL 
 // =====================
-app.post("/control", auth, async (req, res) => {
-  const { device_id, action, duration, start_time, end_time } = req.body;
+app.get("/control", auth, async (req, res) => {
+  const { device_id } = req.query;
 
   if (!device_id) {
     return res.status(400).json({ error: "device_id required" });
   }
 
-  if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
-    return res.status(400).json({ error: "Invalid action" });
-  }
-
   ensureDevice(device_id);
   const d = devices[device_id];
+
+  try {
+    const doc = await db.collection("devices").doc(device_id).get();
+
+    if (doc.exists) {
+      const data = doc.data();
+
+      d.pump = data.pump || d.pump;
+      d.lights = data.lights || d.lights;
+      d.allLights = data.allLights || d.allLights;
+    }
+
+  } catch (err) {
+    console.error("Firestore fetch failed:", err);
+  }
+
+  res.json({
+    pump: d.pump,
+    lights: d.lights,
+    allLights: d.allLights,
+    activeSession: d.activeSession,
+    schedule: d.schedule,
+    server_time: now()
+  });
+});
 
   try {
 
