@@ -76,6 +76,19 @@ async function processQueue() {
   const d = devices[device_id];
   });
   
+  app.post("/control", auth, async (req, res) => {
+  const { device_id, action, duration, start_time, end_time } = req.body;
+
+  if (!device_id) {
+    return res.status(400).json({ error: "device_id required" });
+  }
+
+  if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
+    return res.status(400).json({ error: "Invalid action" });
+  }
+
+  ensureDevice(device_id);
+  const d = devices[device_id];
   try {
     await safeWrite(DEVICES_FILE, devices);
     await safeWrite(LOGS_FILE, logs);
