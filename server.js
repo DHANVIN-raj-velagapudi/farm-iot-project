@@ -214,7 +214,7 @@ app.post("/data", auth, async (req, res) => {
 });
 
 // =====================
-// PUMP CONTROL
+// PUMP CONTROL 
 // =====================
 app.post("/control", auth, async (req, res) => {
   const { device_id, action, duration, start_time, end_time } = req.body;
@@ -223,11 +223,18 @@ app.post("/control", auth, async (req, res) => {
     return res.status(400).json({ error: "device_id required" });
   }
 
+  if (!["ON", "OFF"].includes(action) && !(start_time && end_time)) {
+    return res.status(400).json({ error: "Invalid action" });
+  }
+
   ensureDevice(device_id);
   const d = devices[device_id];
 
   try {
 
+    // =====================
+    // TURN ON
+    // =====================
     if (action === "ON") {
       let endsAt = null;
 
@@ -240,18 +247,17 @@ app.post("/control", auth, async (req, res) => {
 
       if (d.pump !== "ON") {
         d.pump = "ON";
-        logs[device_id].pumpEvents.push({ event: "ON", time: now() });
 
-        // 🔥 FIREBASE UPDATE
+        const event = { event: "ON", time: now() };
+        logs[device_id].pumpEvents.push(event);
+
+        // 🔥 FIREBASE WRITE (ONLY ONCE)
         await db.collection("devices").doc(device_id).set({
           pump: "ON"
         }, { merge: true });
 
         await db.collection("logs").doc(device_id).set({
-          pumpEvents: admin.firestore.FieldValue.arrayUnion({
-            event: "ON",
-            time: Date.now()
-          })
+          pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
         }, { merge: true });
       }
 
@@ -263,21 +269,23 @@ app.post("/control", auth, async (req, res) => {
       d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
     }
 
+    // =====================
+    // TURN OFF
+    // =====================
     if (action === "OFF") {
       if (d.pump !== "OFF") {
         d.pump = "OFF";
-        logs[device_id].pumpEvents.push({ event: "OFF", time: now() });
 
-        // 🔥 FIREBASE UPDATE
+        const event = { event: "OFF", time: now() };
+        logs[device_id].pumpEvents.push(event);
+
+        // 🔥 FIREBASE WRITE (ONLY ONCE)
         await db.collection("devices").doc(device_id).set({
           pump: "OFF"
         }, { merge: true });
 
         await db.collection("logs").doc(device_id).set({
-          pumpEvents: admin.firestore.FieldValue.arrayUnion({
-            event: "OFF",
-            time: Date.now()
-          })
+          pumpEvents: admin.firestore.FieldValue.arrayUnion(event)
         }, { merge: true });
       }
 
@@ -285,6 +293,9 @@ app.post("/control", auth, async (req, res) => {
       d.manualOverrideUntil = now() + 6 * 60 * 60 * 1000;
     }
 
+    // =====================
+    // SCHEDULE
+    // =====================
     if (start_time && end_time) {
       if (!isValidTime(start_time) || !isValidTime(end_time)) {
         return res.status(400).json({ error: "Invalid time format" });
