@@ -199,13 +199,10 @@ app.post("/data", auth, async (req, res) => {
 
   ensureDevice(device_id);
 
-  // 🔥 FIREBASE MOISTURE SAVE
-await db.collection("logs").doc(device_id).set({
-  moisture: admin.firestore.FieldValue.arrayUnion({
+  logs[device_id].moisture.push({
     value: moisture,
-    time: Date.now()
-  })
-}, { merge: true });
+    time: now()
+  });
 
   logs[device_id].moisture = cleanOld(logs[device_id].moisture);
 
