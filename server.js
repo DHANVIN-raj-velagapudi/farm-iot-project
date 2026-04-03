@@ -453,12 +453,6 @@ app.post("/lights", auth, async (req, res) => {
 // =====================
 // DEVICE POLL
 // =====================
-app.get("/control", auth, (req, res) => {
-  const { device_id } = req.query;
-
-  if (!device_id) {
-    return res.status(400).json({ error: "device_id required" });
-  }
 
   ensureDevice(device_id);
   const d = devices[device_id];
