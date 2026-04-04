@@ -342,21 +342,24 @@ setInterval(() => {
     // =====================
     // LIGHT TIMERS
     // =====================
-    processLightTimers(id, d, currentTime);
+    function processLightTimers(device_id, d, currentTime) {
+  for (let lid in d.lightTimers) {
+    const t = d.lightTimers[lid];
 
-    // =====================
-    // PUMP AUTO OFF 
-    // =====================
-    if (d.activeSession?.ends_at && currentTime >= d.activeSession.ends_at) {
-      d.pump = "OFF";
-      d.activeSession = null;
+    if (t && currentTime >= t.ends_at) {
+      d.lights[lid] = "OFF";
+      d.lightTimers[lid] = null;
 
       appendLog({
-        device_id: id,
+        device_id,
+        type: "light",
+        light_id: lid,
         event: "AUTO_OFF",
         time: currentTime
       });
     }
+  }
+}
 
     // =====================
     // SCHEDULE LOGIC (TIMEZONE AWARE)
