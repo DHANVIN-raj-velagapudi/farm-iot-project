@@ -1,461 +1,231 @@
-# 🌱 Smart IoT Farm Backend
+🌱 Smart IoT Farm Backend
 
-A real-world IoT backend for controlling irrigation pumps and multiple lights using ESP32 and a Node.js server.
+A production-ready Node.js backend for IoT irrigation systems, built for reliability, control, and real-world deployment.
 
----
+Designed for ESP32/NodeMCU devices, supporting pump automation, multi-channel lighting, and intelligent decision support.
 
-# 🚀 Features
-
-* Pump control (manual + timer + schedule)
-* Multi-light control (individual + all)
-* Conflict-safe logic (timer > manual > schedule)
-* 7-day data retention
-* JSON-based storage (no database)
-* Platform-independent deployment (Fly.io, Render, VPS, etc.)
-
----
-
-# ⚠️ Current Limitation
-
-* Multi-device (multiple farms) is **not fully supported yet**
-* Currently designed for **one physical unit with multiple actuators**
-* Multi-farm support will be added in future versions
-
----
-
-# 📁 Project Structure
-
-```
-project/
-│── server.js
-│── package.json
-│── fly.toml
-│── .gitignore
-│
-├── data/
-│    ├── devices.json
-│    ├── logs.json
-```
-
-* `devices.json` → current system state
-* `logs.json` → historical data
-
----
-
-# 🛠️ Setup Instructions
-
-## 1. Clone repository
-
-```bash
-git clone https://github.com/YOUR_USERNAME/farm-iot-project.git
-cd farm-iot-project
-```
-
----
-
-## 2. Install dependencies
-
-```bash
+🚀 Key Features
+Manual-first pump control with timer support
+10-channel light system with independent timers
+AI-powered suggestions (no forced automation)
+High-performance logging system with auto-rotation
+Non-blocking Firestore sync
+Safe state management with atomic writes
+Built-in rate limiting for stability
+⚡ Quick Start
+git clone https://github.com/YOUR_USERNAME/farm-iot-backend.git
+cd farm-iot-backend
 npm install
-```
-
----
-
-## 3. Create data folder
-
-```bash
 mkdir data
-```
+export DEVICE_TOKEN=SECRET123
+export FIREBASE_KEY='{}'
+npm start
 
----
+Server → http://localhost:3000
 
-## 4. Run server
-
-```bash
-node server.js
-```
-
----
-
-# 🔐 Authentication
-
-All requests require header:
-
-```
-x-device-token: SECRET123
-```
-
-## ⚙️ Changing the Token
-
-Update this in `server.js`:
-
-```js
-const DEVICE_TOKEN = "YOUR_SECRET_TOKEN";
-```
-
-👉 For production, use environment variables instead of hardcoding.
-
----
-
-# 📡 API Documentation
-
----
-
-## 1. Send Sensor Data
-
-### POST `/data`
-
-**Request:**
-
-```json
-{
-  "device_id": "farm_1",
-  "moisture": 45
-}
-```
-
-**Response:**
-
-```json
-{
-  "ok": true
-}
-```
-
----
-
-## 2. Pump Control
-
-### POST `/control`
-
-### Turn ON with timer (1 hour)
-
-```json
-{
-  "device_id": "farm_1",
-  "action": "ON",
-  "duration": 3600
-}
-```
-
----
-
-### Turn OFF
-
-```json
-{
-  "device_id": "farm_1",
-  "action": "OFF"
-}
-```
-
----
-
-### Schedule
-
-```json
-{
-  "device_id": "farm_1",
-  "start_time": "14:00",
-  "end_time": "16:00"
-}
-```
-
----
-
-### Response:
-
-```json
-{
-  "ok": true,
-  "device": {
-    "pump": "ON",
-    "activeSession": {
-      "started_at": 1710000000,
-      "ends_at": 1710003600
-    }
-  }
-}
-```
-
----
-
-## 3. Lights Control
-
-### Add Light
-
-```json
-{
-  "device_id": "farm_1",
-  "add_light": "light_1"
-}
-```
-
----
-
-### Turn All Lights ON
-
-```json
-{
-  "device_id": "farm_1",
-  "all_lights": "ON"
-}
-```
-
----
-
-### Control Single Light
-
-```json
-{
-  "device_id": "farm_1",
-  "light_id": "light_1",
-  "state": "OFF"
-}
-```
-
----
-
-### Response:
-
-```json
-{
-  "ok": true,
-  "lights": {
-    "light_1": "ON",
-    "light_2": "OFF"
-  },
-  "allLights": "MIXED"
-}
-```
-
----
-
-## 4. Device Poll (ESP)
-
-### GET `/control?device_id=farm_1`
-
-**Response:**
-
-```json
-{
-  "pump": "ON",
-  "lights": {
-    "light_1": "ON"
-  },
-  "allLights": "ON",
-  "activeSession": {
-    "started_at": 1710000000,
-    "ends_at": 1710003600
-  },
-  "schedule": {
-    "start_time": "14:00",
-    "end_time": "16:00"
-  }
-}
-```
-
----
-
-# ⚡ Quick Test (cURL)
-
-### Send moisture data
-
-```bash
-curl -X POST http://localhost:3000/data \
--H "Content-Type: application/json" \
--H "x-device-token: SECRET123" \
--d '{
-  "device_id": "farm_1",
-  "moisture": 50
-}'
-```
-
----
-
-### Turn pump ON
-
-```bash
+🧪 Test API (Working Example)
+Turn Pump ON
 curl -X POST http://localhost:3000/control \
 -H "Content-Type: application/json" \
 -H "x-device-token: SECRET123" \
 -d '{
   "device_id": "farm_1",
   "action": "ON",
-  "duration": 60
+  "duration": 10
 }'
-```
+
+Response:
+
+{ "ok": true }
+📡 API Overview
+/data → Sensor Input
+{
+  "device_id": "farm_1",
+  "moisture": 45
+}
+/control → Pump Control
+{
+  "device_id": "farm_1",
+  "action": "ON",
+  "duration": 60
+}
+/lights → Light Control
+{
+  "device_id": "farm_1",
+  "light_id": "L1",
+  "state": "ON",
+  "duration": 120
+}
+/state → Debug State
+
+Returns full system state.
+
+🧠 System Design
+Hybrid storage (RAM + JSON + logs + Firestore)
+Background processing loop (5s)
+Timer + manual + schedule priority system
+Append-only logging for reliability
+⚙️ Behavior Rules
+
+Priority:
+
+Timer
+Manual
+Schedule
+📌 Project Status
+
+This project is currently Version 1.0.
+
+Actively evolving to support:
+
+Multi-device architecture
+Enhanced security
+Scalable database systems
+⚠️ Limitations
+Designed for single-device setups
+File-based storage (not horizontally scalable)
+Basic token-based authentication
+⚠️ Disclaimer
+
+This project is provided as-is.
+
+The author is not responsible for:
+
+Hardware damage
+Crop loss
+Misuse or incorrect deployment
+
+Use responsibly in real-world environments.
+
+⚙️ Requirements
+Runtime
+Node.js >= 18
+npm (comes with Node)
+Environment Variables
+
+You must configure the following:
+
+DEVICE_TOKEN=your_secure_token
+FIREBASE_KEY=your_firebase_service_account_json
+Storage
+Persistent file system required
+Used for:
+devices.json (state)
+logs.ndjson (logs)
+Hardware (Typical Setup)
+ESP32 / NodeMCU
+Relay module (for pump control)
+Moisture sensor
+Lights (optional channels L1–L10)
+☁️ Deployment
+
+This backend is platform-independent and can run on any Node.js environment.
+
+🟢 Option 1 — Local / VPS
+git clone https://github.com/YOUR_USERNAME/farm-iot-backend.git
+cd farm-iot-backend
+npm install
+mkdir data
+npm start
+🟡 Option 2 — Render
+
+Steps:
+
+Create a new Web Service
+Connect your GitHub repo
+Set:
+Build Command: npm install
+Start Command: npm start
+Add Environment Variables:
+DEVICE_TOKEN
+FIREBASE_KEY
+Deploy
+
+👉 Recommended for quick production setup
+
+🔵 Option 3 — Fly.io
+
+Requirements:
+
+Fly CLI installed
+Volume for persistent storage
+
+Steps:
+
+fly launch
+fly volumes create data_vol --size 1
+fly deploy
+
+⚠️ Important:
+
+Mount volume to /data
+Ensure logs + state are persistent
+🟣 Option 4 — Docker (Optional)
+FROM node:18
+
+WORKDIR /app
+COPY . .
+
+RUN npm install
+
+CMD ["npm", "start"]
+
+Run:
+
+docker build -t farm-backend .
+docker run -p 3000:3000 farm-backend
+
+# 📌 Project Status
+
+This project is currently **Version 1.0 (V1)**.
+
+It is fully functional and stable for single-device use, but ongoing improvements are planned.
+
+Future updates may include:
+- Multi-device support
+- Improved security (token rotation, per-device auth)
+- Scalable storage (database integration)
+- Advanced analytics and monitoring
+
+👉 This project will continue evolving to better support real-world deployment scenarios.
+
+# ⚠️ Disclaimer
+
+This project is provided **"AS IS"**, without any warranties or guarantees of any kind.
+
+By using this software, you agree that:
+
+- The author is **not responsible for any hardware damage**
+- The author is **not responsible for crop loss, water misuse, or financial loss**
+- The author is **not responsible for system failures, bugs, or unexpected behavior**
 
 ---
 
-# ⚙️ System Behavior
+## 🚫 Use at Your Own Risk
 
-## Priority Rules
+This system interacts with **real-world hardware (pumps, electrical systems, irrigation setups)**.
 
-1. Timer (highest priority)
-2. Manual control
-3. Schedule (lowest priority)
+Improper use, misconfiguration, or software failure can result in:
 
----
-
-### Example 1
-
-* Schedule ON
-* User presses OFF
-
-👉 Pump remains OFF (manual override)
+- Overwatering or underwatering
+- Pump damage
+- Electrical issues
+- Crop damage or complete loss
 
 ---
 
-### Example 2
+## 🧠 Responsibility
 
-* Timer active
-  👉 Schedule is ignored
+You are fully responsible for:
 
----
-
-# 💡 Lights Behavior
-
-* Supports dynamic lights (max 30)
-* `allLights` values:
-
-  * `ON` → all lights ON
-  * `OFF` → all lights OFF
-  * `MIXED` → partial ON/OFF
+- Testing the system before real deployment  
+- Adding proper electrical protection (relays, fuses, fail-safes)  
+- Monitoring system behavior in production  
 
 ---
 
-# 🧠 Architecture Overview
+👉 If you are not confident in handling real-world IoT systems, **do not deploy this in a live farm environment without supervision**.
 
-## Storage
+👨‍💻 Author
 
-* `devices.json` → current system state
-* `logs.json` → historical logs
-
-## Backend Logic
-
-* Write queue → prevents data corruption
-* Atomic writes → safe file updates
-* Background loop (every 5 seconds):
-
-  * Handles timer expiry
-  * Applies schedule logic
-
----
-
-# ☁️ Deployment
-
-This backend is **platform-independent** and can run on multiple hosting providers.
-
-## 🌐 Supported Platforms
-
-* Render
-* Fly.io
-* Railway
-* VPS (Node.js)
-* Docker
-
----
-
-## 🧠 Current Deployment
-
-This project is currently deployed using **Render**.
-
----
-
-## ⚙️ Fly.io Support
-
-This repository includes a `fly.toml` configuration file.
-
-👉 If you want to use Fly.io:
-
-* Use the provided `fly.toml`
-* Configure persistent storage (volume required)
-* Set environment variables (e.g., `DEVICE_TOKEN`)
-⚠️ Note:
-The provided `fly.toml` uses the `bom` (Mumbai, India) region.
-If you are deploying from another location, update `primary_region` accordingly.
----
-
-## ⚙️ Requirements
-
-* Node.js (v18+ recommended)
-* Persistent storage (required for JSON-based data)
-
----
-
-## 📦 Important Notes
-
-### 🔌 PORT Configuration
-
-```js id="nvb0zo"
-const PORT = process.env.PORT || 3000;
-```
-
----
-
-### 💾 Persistent Storage (CRITICAL)
-
-This project stores data using JSON files.
-
-Platform behavior:
-
-* Fly.io → requires volume (`/data`)
-* Render → uses local filesystem or disk
-* VPS → default filesystem works
-
----
-
-### 📁 Storage Path
-
-```js id="7bn0kl"
-const DATA_DIR = process.env.NODE_ENV === "production"
-  ? "/data"
-  : "./data";
-```
-
----
-
-## 🗄️ Optional: Database Upgrade
-
-You can replace JSON storage with a database for scalability.
-
-### Options
-
-* MongoDB
-* PostgreSQL
-* Firebase / Supabase
-
----
-
-### Required Changes
-
-* Remove file-based storage logic
-* Replace with database queries
-
----
-
-### Data Mapping
-
-| JSON File    | Database Table |
-| ------------ | -------------- |
-| devices.json | devices        |
-| logs.json    | logs           |
-----------------------------------------------------------------------------
-**license**
-This project is NOT licensed under MIT or any standard open-source license.
-
-It is released under the TeluguCircuitLab Non-Commercial License.
-
-See: TELUGUCIRCUITLAB-NONCOMMERCIAL-LICENSE.txt
---------------------------------------------------------------------------
-# 👨‍💻 Author
-
-**VELAGAPUDI DHANVIN RAJ**
-
-* Web Developer
-* IoT Project Builder
-* Android App Developer
-
-📺 YouTube: https://www.youtube.com/@TeluguCircuitLab
-👉 Follow for project tutorials and real-world builds (Telugu with English subtitle support)
+VELAGAPUDI DHANVIN RAJ
