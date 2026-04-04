@@ -435,3 +435,7 @@ init().then(() => {
     console.log("🚀 FINAL BACKEND RUNNING");
   });
 });
+
+app.get("/test", (req, res) => {
+  res.send("NEW VERSION RUNNING");
+});
