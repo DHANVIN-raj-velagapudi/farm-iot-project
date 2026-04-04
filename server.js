@@ -282,7 +282,7 @@ app.post("/control", auth, async (req, res) => {
       d.pump = "OFF";
       d.manualLockUntil = now + 10 * 60 * 1000;
       d.activeSession = null;
-       dirtyDevices.add(id);
+       dirtyDevices.add(device_id);
       
       queueLog({ device_id, event: "OFF", reason: reason || "manual", time: now });
     }
@@ -408,7 +408,8 @@ setInterval(() => {
       if (d.activeSession?.ends_at && now >= d.activeSession.ends_at) {
         d.pump = "OFF";
         d.activeSession = null;
-
+        dirtyDevices.add(id);
+        
         queueLog({ device_id: id, event: "AUTO_OFF", reason: "timer", time: now });
       }
 
