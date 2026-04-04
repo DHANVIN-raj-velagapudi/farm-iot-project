@@ -470,10 +470,10 @@ process.on("SIGTERM", shutdown);
 // =====================
 init().then(() => {
   app.listen(3000, () => {
-    console.log("🚀 FINAL BACKEND RUNNING");
+    console.log("🚀 BACKEND RUNNING");
   });
 });
 
 app.get("/test", (req, res) => {
-  res.send("NEW VERSION RUNNING l ");
+  res.send("NEW VERSION RUNNING1 ");
 });
