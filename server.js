@@ -476,13 +476,19 @@ setInterval(() => {
 setInterval(async () => {
   const ids = Array.from(dirtyDevices).slice(0, 50);
 
-  if (db) {
-  try {
-    await db.collection("devices").doc(id).set(devices[id]);
-  } catch {
-    recordMetric("err");
+  for (let id of ids) {
+    if (db) {
+      try {
+        await db.collection("devices").doc(id).set(devices[id]);
+      } catch {
+        recordMetric("err");
+      }
+    }
+
+    dirtyDevices.delete(id);
   }
-}
+
+}, 15000);
 
 // =====================
 // SHUTDOWN (SAFE)
