@@ -395,7 +395,7 @@ setInterval(() => {
         d.pump = "OFF";
         d.activeSession = null;
 
-        queueLog({ device_id: id, event: "AUTO_OFF", time: now });
+        queueLog({ device_id: id, event: "AUTO_OFF", reason: "timer", time: now });
       }
 
       if (d.schedule && now > d.manualLockUntil) {
