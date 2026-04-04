@@ -342,7 +342,7 @@ setInterval(() => {
     // =====================
     // LIGHT TIMERS
     // =====================
-    processLightTimers(id, d);
+    processLightTimers(id, d, currentTime);
 
     // =====================
     // PUMP AUTO OFF 
