@@ -336,6 +336,7 @@ app.post("/data", auth, async (req, res) => {
     validateMoisture(moisture);
 
     ensureDevice(device_id);
+    devices[device_id].lastSeen = now;
     const d = devices[device_id];
 
     queueLog({ device_id, type: "moisture", value: moisture, time: now });
