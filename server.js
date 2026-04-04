@@ -160,7 +160,7 @@ function initLights() {
 }
 
 function handleLightCommand(d, { light_id, state, duration }, now) {
-  if (!d.lights[light_id]) throw new Error("Invalid light_id");
+  if (!(light_id in d.lights)) throw new Error("Invalid light_id");
 
   validateDuration(duration);
 
