@@ -494,7 +494,9 @@ async function shutdown() {
 
     const tasks = [];
     for (let id of dirtyDevices) {
-      tasks.push(db.collection("devices").doc(id).set(devices[id]));
+      if (db) {
+  tasks.push(db.collection("devices").doc(id).set(devices[id]));
+}
     }
 
     await Promise.all(tasks);
