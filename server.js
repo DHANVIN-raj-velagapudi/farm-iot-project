@@ -287,7 +287,6 @@ app.post("/control", auth, async (req, res) => {
       queueLog({ device_id, event: "OFF", reason: reason || "manual", time: now });
     }
 
-    dirtyDevices.add(device_id);
     res.json({ ok: true });
 
   } catch (e) {
