@@ -183,7 +183,7 @@ function processLightTimers(device_id, d, now) {
       d.lights[lid] = "OFF";
       d.lightTimers[lid] = null;
 
-      queueLog({ device_id, type: "light", event: "AUTO_OFF", time: now });
+      queueLog({ device_id, type: "light", event: "AUTO_OFF", reason: "timer", time: now });
     }
   }
 }
