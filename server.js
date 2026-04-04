@@ -426,6 +426,12 @@ setInterval(() => {
   }
 }, 5000);
 
+//  mark offline if no data for 2 min
+if (now - (d.lastSeen || 0) > 120000) {
+  d.status = "offline";
+} else {
+  d.status = "online";
+}
 // =====================
 // FIRESTORE (NO FREEZE)
 // =====================
