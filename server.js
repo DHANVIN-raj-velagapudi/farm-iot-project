@@ -153,18 +153,18 @@ async function init() {
 // =====================
 // HELPERS
 // =====================
-function ensureDevice(id) {
-  if (!id || id.length > MAX_DEVICE_ID) throw new Error("Invalid device_id");
+if (!devices[id]) {
+  const { lights, timers } = initLights();
 
-  if (!devices[id]) {
-    devices[id] = {
-      pump: "OFF",
-      schedule: null,
-      manualLockUntil: 0,
-      tzOffset: 0,
-      aiLastRun: 0
-    };
-  }
+  devices[id] = {
+    pump: "OFF",
+    lights,
+    lightTimers: timers,
+    schedule: null,
+    manualLockUntil: 0,
+    tzOffset: 0,
+    aiLastRun: 0
+  };
 }
 
 // =====================
