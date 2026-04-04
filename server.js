@@ -70,6 +70,57 @@ function getMetrics() {
 }
 
 // =====================
+// LIGHT SYSTEM (MODULE)
+// =====================
+
+function initLights() {
+  const lights = {};
+  const timers = {};
+
+  for (let i = 1; i <= 10; i++) {
+    lights["L" + i] = "OFF";
+    timers["L" + i] = null;
+  }
+
+  return { lights, timers };
+}
+
+function handleLightCommand(d, { light_id, state, duration }) {
+  if (!d.lights.hasOwnProperty(light_id)) {
+    throw new Error("Invalid light_id");
+  }
+
+  d.lights[light_id] = state;
+
+  if (state === "ON" && duration) {
+    d.lightTimers[light_id] = {
+      ends_at: Date.now() + duration * 1000
+    };
+  } else {
+    d.lightTimers[light_id] = null;
+  }
+}
+
+function processLightTimers(device_id, d) {
+  for (let lid in d.lightTimers) {
+    const t = d.lightTimers[lid];
+
+    if (t && Date.now() >= t.ends_at) {
+      d.lights[lid] = "OFF";
+      d.lightTimers[lid] = null;
+
+      appendLog({
+        device_id,
+        type: "light",
+        light_id: lid,
+        event: "AUTO_OFF",
+        time: Date.now()
+      });
+    }
+  }
+}
+
+// =====================
 // SAFE STATE WRITE
 // =====================
 async function saveState() {
