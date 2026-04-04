@@ -282,7 +282,8 @@ app.post("/control", auth, async (req, res) => {
       d.pump = "OFF";
       d.manualLockUntil = now + 10 * 60 * 1000;
       d.activeSession = null;
-
+       dirtyDevices.add(id);
+      
       queueLog({ device_id, event: "OFF", reason: reason || "manual", time: now });
     }
 
@@ -432,12 +433,6 @@ setInterval(() => {
           queueLog({ device_id: id, event: "SCHEDULE_OFF", reason: "schedule", time: now });
         }
         
-        //  mark offline if no data for 2 min
-if (now - (d.lastSeen || 0) > 120000) {
-  d.status = "offline";
-} else {
-  d.status = "online";
-}
       }
 
     } catch (e) {
