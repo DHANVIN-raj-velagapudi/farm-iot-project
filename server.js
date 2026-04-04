@@ -153,18 +153,25 @@ async function init() {
 // =====================
 // HELPERS
 // =====================
-if (!devices[id]) {
-  const { lights, timers } = initLights();
+function ensureDevice(id) {
+  if (!id || id.length > MAX_DEVICE_ID) {
+    throw new Error("Invalid device_id");
+  }
 
-  devices[id] = {
-    pump: "OFF",
-    lights,
-    lightTimers: timers,
-    schedule: null,
-    manualLockUntil: 0,
-    tzOffset: 0,
-    aiLastRun: 0
-  };
+  if (!devices[id]) {
+    const { lights, timers } = initLights();
+
+    devices[id] = {
+      pump: "OFF",
+      lights,
+      lightTimers: timers,
+      schedule: null,
+      manualLockUntil: 0,
+      tzOffset: 0,
+      aiLastRun: 0,
+      activeSession: null
+    };
+  }
 }
 
 // =====================
