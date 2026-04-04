@@ -416,7 +416,7 @@ setInterval(() => {
 
         if (!active && d.pump !== "OFF") {
           d.pump = "OFF";
-          queueLog({ device_id: id, event: "SCHEDULE_OFF", time: now });
+          queueLog({ device_id: id, event: "SCHEDULE_OFF", reason: "schedule", time: now });
         }
         
         //  mark offline if no data for 2 min
