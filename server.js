@@ -400,7 +400,8 @@ setInterval(() => {
 } else {
   d.status = "online";
 }
-
+     dirtyDevices.add(id);
+      
       processLightTimers(id, d, now);
 
       if (d.activeSession?.ends_at && now >= d.activeSession.ends_at) {
