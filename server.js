@@ -101,11 +101,11 @@ function handleLightCommand(d, { light_id, state, duration }) {
   }
 }
 
-function processLightTimers(device_id, d, currentTime) {
+function processLightTimers(device_id, d) {
   for (let lid in d.lightTimers) {
     const t = d.lightTimers[lid];
 
-    if (t && currentTime >= t.ends_at) {
+    if (t && Date.now() >= t.ends_at) {
       d.lights[lid] = "OFF";
       d.lightTimers[lid] = null;
 
@@ -114,7 +114,7 @@ function processLightTimers(device_id, d, currentTime) {
         type: "light",
         light_id: lid,
         event: "AUTO_OFF",
-        time: currentTime
+        time: Date.now()
       });
     }
   }
