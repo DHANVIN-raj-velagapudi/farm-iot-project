@@ -135,23 +135,42 @@ function auth(req, res, next) {
 // =====================
 app.post("/control", auth, async (req, res) => {
   try {
-    const { device_id, action } = req.body;
-    ensureDevice(device_id);
+    const { device_id, action, duration } = req.body;
 
+    ensureDevice(device_id);
     const d = devices[device_id];
 
     if (action === "ON") {
       d.pump = "ON";
       d.manualLockUntil = Date.now() + 10 * 60 * 1000;
 
-      await appendLog({ device_id, event: "ON", time: Date.now() });
+      if (duration) {
+        d.activeSession = {
+          started_at: Date.now(),
+          ends_at: Date.now() + duration * 1000
+        };
+      }
+
+      await appendLog({
+        device_id,
+        event: "ON",
+        time: Date.now(),
+        duration: duration || null
+      });
     }
 
     if (action === "OFF") {
       d.pump = "OFF";
       d.manualLockUntil = Date.now() + 10 * 60 * 1000;
 
-      await appendLog({ device_id, event: "OFF", time: Date.now() });
+      //  CLEAR SESSION
+      d.activeSession = null;
+
+      await appendLog({
+        device_id,
+        event: "OFF",
+        time: Date.now()
+      });
     }
 
     dirtyDevices.add(device_id);
