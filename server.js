@@ -101,11 +101,11 @@ function handleLightCommand(d, { light_id, state, duration }) {
   }
 }
 
-function processLightTimers(device_id, d) {
+function processLightTimers(device_id, d, currentTime) {
   for (let lid in d.lightTimers) {
     const t = d.lightTimers[lid];
 
-    if (t && Date.now() >= t.ends_at) {
+    if (t && currentTime >= t.ends_at) {
       d.lights[lid] = "OFF";
       d.lightTimers[lid] = null;
 
@@ -114,7 +114,7 @@ function processLightTimers(device_id, d) {
         type: "light",
         light_id: lid,
         event: "AUTO_OFF",
-        time: Date.now()
+        time: currentTime
       });
     }
   }
@@ -340,27 +340,6 @@ setInterval(() => {
   for (let id in devices) {
     const d = devices[id];
 
-    // =====================
-    // LIGHT TIMERS
-    // =====================
-    function processLightTimers(device_id, d, currentTime) {
-  for (let lid in d.lightTimers) {
-    const t = d.lightTimers[lid];
-
-    if (t && currentTime >= t.ends_at) {
-      d.lights[lid] = "OFF";
-      d.lightTimers[lid] = null;
-
-      appendLog({
-        device_id,
-        type: "light",
-        light_id: lid,
-        event: "AUTO_OFF",
-        time: currentTime
-      });
-    }
-  }
-}
 
     // =====================
     // SCHEDULE LOGIC (TIMEZONE AWARE)
