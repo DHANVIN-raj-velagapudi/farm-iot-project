@@ -217,6 +217,7 @@ app.post("/control", auth, async (req, res) => {
       });
     }
 
+    
     if (action === "OFF") {
       d.pump = "OFF";
       d.manualLockUntil = Date.now() + 10 * 60 * 1000;
