@@ -468,5 +468,5 @@ init().then(() => {
 });
 
 app.get("/test", (req, res) => {
-  res.send("NEW VERSION RUNNING");
+  res.send("NEW VERSION RUNNING l ");
 });
