@@ -336,7 +336,7 @@ app.get("/control", auth, (req, res) => {
 setInterval(() => {
   for (let id in devices) {
     const d = devices[id];
-
+        processLightTimers(id, d);
     // schedule logic (timezone applied)
     if (d.schedule && Date.now() > d.manualLockUntil) {
       const t = new Date(Date.now() + d.tzOffset * 60000);
@@ -361,9 +361,23 @@ setInterval(() => {
         d.pump = "OFF";
         appendLog({ device_id: id, event: "SCHEDULE_OFF", time: Date.now() });
       }
+      
+      // AUTO OFF (pump)
+if (d.activeSession?.ends_at && Date.now() >= d.activeSession.ends_at) {
+  d.pump = "OFF";
+  d.activeSession = null;
+
+  appendLog({
+    device_id: id,
+    event: "AUTO_OFF",
+    time: Date.now()
+  });
+}
     }
   }
 }, 5000);
+
+
 
 // =====================
 // FIREBASE (SAFE)
