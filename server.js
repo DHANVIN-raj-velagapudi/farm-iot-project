@@ -392,6 +392,14 @@ setInterval(() => {
   for (let id in devices) {
     try {
       const d = devices[id];
+      
+      if (!d.lastSeen) {
+  d.status = "unknown";
+} else if (now - d.lastSeen > 120000) {
+  d.status = "offline";
+} else {
+  d.status = "online";
+}
 
       processLightTimers(id, d, now);
 
