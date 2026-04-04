@@ -306,13 +306,14 @@ app.post("/lights", auth, async (req, res) => {
     handleLightCommand(d, { light_id, state, duration }, now);
 
     queueLog({
-      device_id,
-      type: "light",
-      light_id,
-      state,
-      duration,
-      time: now
-    });
+  device_id,
+  type: "light",
+  light_id,
+  state,
+  duration,
+  reason: reason || "manual",
+  time: now
+});
 
     dirtyDevices.add(device_id);
 
