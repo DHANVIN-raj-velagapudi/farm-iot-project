@@ -331,15 +331,38 @@ app.get("/control", auth, (req, res) => {
 });
 
 // =====================
-// LOOP
+// LOOP 
 // =====================
 setInterval(() => {
+  const currentTime = Date.now(); // ✅ single source of time
+
   for (let id in devices) {
     const d = devices[id];
-        processLightTimers(id, d);
-    // schedule logic (timezone applied)
-    if (d.schedule && Date.now() > d.manualLockUntil) {
-      const t = new Date(Date.now() + d.tzOffset * 60000);
+
+    // =====================
+    // LIGHT TIMERS
+    // =====================
+    processLightTimers(id, d);
+
+    // =====================
+    // PUMP AUTO OFF 
+    // =====================
+    if (d.activeSession?.ends_at && currentTime >= d.activeSession.ends_at) {
+      d.pump = "OFF";
+      d.activeSession = null;
+
+      appendLog({
+        device_id: id,
+        event: "AUTO_OFF",
+        time: currentTime
+      });
+    }
+
+    // =====================
+    // SCHEDULE LOGIC (TIMEZONE AWARE)
+    // =====================
+    if (d.schedule && currentTime > d.manualLockUntil) {
+      const t = new Date(currentTime + d.tzOffset * 60000);
       const cur = t.getHours() * 60 + t.getMinutes();
 
       const [sh, sm] = d.schedule.start_time.split(":").map(Number);
@@ -352,32 +375,34 @@ setInterval(() => {
         ? cur >= start && cur <= end
         : cur >= start || cur <= end;
 
+      // =====================
+      // SCHEDULE ON
+      // =====================
       if (active && d.pump !== "ON") {
         d.pump = "ON";
-        appendLog({ device_id: id, event: "SCHEDULE_ON", time: Date.now() });
+
+        appendLog({
+          device_id: id,
+          event: "SCHEDULE_ON",
+          time: currentTime
+        });
       }
 
+      // =====================
+      // SCHEDULE OFF
+      // =====================
       if (!active && d.pump !== "OFF") {
         d.pump = "OFF";
-        appendLog({ device_id: id, event: "SCHEDULE_OFF", time: Date.now() });
-      }
-      
-      // AUTO OFF (pump)
-if (d.activeSession?.ends_at && Date.now() >= d.activeSession.ends_at) {
-  d.pump = "OFF";
-  d.activeSession = null;
 
-  appendLog({
-    device_id: id,
-    event: "AUTO_OFF",
-    time: Date.now()
-  });
-}
+        appendLog({
+          device_id: id,
+          event: "SCHEDULE_OFF",
+          time: currentTime
+        });
+      }
     }
   }
 }, 5000);
-
-
 
 // =====================
 // FIREBASE (SAFE)
