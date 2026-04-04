@@ -378,7 +378,7 @@ setInterval(() => {
       // =====================
       // SCHEDULE ON
       // =====================
-      if (active && d.pump !== "ON") {
+      if (active && d.pump !== "ON" && currentTime > d.manualLockUntil) {
         d.pump = "ON";
 
         appendLog({
