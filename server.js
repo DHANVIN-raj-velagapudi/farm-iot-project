@@ -391,7 +391,7 @@ setInterval(() => {
       // =====================
       // SCHEDULE OFF
       // =====================
-      if (!active && d.pump !== "OFF") {
+      if (!active && d.pump !== "OFF" && currentTime > d.manualLockUntil) {
         d.pump = "OFF";
 
         appendLog({
