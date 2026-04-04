@@ -371,6 +371,13 @@ app.post("/data", auth, async (req, res) => {
 });
 
 // =====================
+// STATE (DEBUG)
+// =====================
+app.get("/state", (req, res) => {
+  res.json(devices);
+});
+
+// =====================
 // LOOP (SAFE)
 // =====================
 setInterval(() => {
