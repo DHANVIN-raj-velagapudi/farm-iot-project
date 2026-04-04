@@ -182,7 +182,7 @@ function processLightTimers(device_id, d, now) {
     if (t && now >= t.ends_at) {
       d.lights[lid] = "OFF";
       d.lightTimers[lid] = null;
-
+      dirtyDevices.add(device_id);
       queueLog({ device_id, type: "light", event: "AUTO_OFF", reason: "timer", time: now });
     }
   }
