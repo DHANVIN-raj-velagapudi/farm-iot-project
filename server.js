@@ -261,6 +261,7 @@ app.post("/control", auth, async (req, res) => {
 
     ensureDevice(device_id);
     const d = devices[device_id];
+    
     devices[device_id].lastSeen = now;
 
     if (action === "ON") {
@@ -304,6 +305,8 @@ app.post("/lights", auth, async (req, res) => {
     ensureDevice(device_id);
     const d = devices[device_id];
 
+    devices[device_id].lastSeen = now;
+    
     handleLightCommand(d, { light_id, state, duration }, now);
 
     queueLog({
