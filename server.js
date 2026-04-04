@@ -250,6 +250,21 @@ function auth(req, res, next) {
 }
 
 // =====================
+// PING (HEARTBEAT)
+// =====================
+app.post("/ping", auth, (req, res) => {
+  const now = Date.now();
+  const { device_id } = req.body;
+
+  ensureDevice(device_id);
+  devices[device_id].lastSeen = now;
+
+  dirtyDevices.add(device_id);
+
+  res.json({ ok: true });
+});
+
+// =====================
 // CONTROL
 // =====================
 app.post("/control", auth, async (req, res) => {
