@@ -471,12 +471,14 @@ setInterval(() => {
 }, 5000);
 
 // =====================
-// FIRESTORE (NO FREEZE)
+// FIRESTORE 
 // =====================
 setInterval(async () => {
+
   const ids = Array.from(dirtyDevices).slice(0, 50);
 
   for (let id of ids) {
+
     if (db) {
       try {
         await db.collection("devices").doc(id).set(devices[id]);
@@ -489,7 +491,6 @@ setInterval(async () => {
   }
 
 }, 15000);
-
 // =====================
 // SHUTDOWN (SAFE)
 // =====================
