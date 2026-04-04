@@ -411,7 +411,7 @@ setInterval(() => {
 
         if (active && d.pump !== "ON") {
           d.pump = "ON";
-          queueLog({ device_id: id, event: "SCHEDULE_ON", time: now });
+          queueLog({ device_id: id, event: "SCHEDULE_ON", reason: "schedule", time: now });
         }
 
         if (!active && d.pump !== "OFF") {
