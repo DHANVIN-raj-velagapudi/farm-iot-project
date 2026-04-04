@@ -29,33 +29,27 @@ app.use(express.json({ limit: "10kb" }));
 // =====================
 const DATA_DIR = path.join(__dirname, "data");
 const STATE_FILE = path.join(DATA_DIR, "devices.json");
-const LOG_FILE = path.join(DATA_DIR, "logs.ndjson"); // append-only
+const LOG_FILE = path.join(DATA_DIR, "logs.ndjson");
 
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || "SECRET123";
 
-const MAX_EVENTS = 500;
 const MAX_DEVICE_ID = 40;
-const MAX_DIRTY = 1000;
-const VALID = ["ON", "OFF"];
 
 // =====================
-// STATE (HOT)
+// STATE
 // =====================
 let devices = {};
 let dirtyDevices = new Set();
-let dirtyLogs = new Set();
 
 // =====================
-// METRICS (ROLLING)
+// METRICS (HARD CAPPED)
 // =====================
 let metrics = [];
 
 function recordMetric(type) {
   metrics.push({ type, time: Date.now() });
 
-  // keep last 5 min
-  const cutoff = Date.now() - 5 * 60 * 1000;
-  metrics = metrics.filter(m => m.time > cutoff);
+  if (metrics.length > 1000) metrics.shift();
 }
 
 function getMetrics() {
@@ -63,16 +57,96 @@ function getMetrics() {
   const lastMin = metrics.filter(m => now - m.time < 60000);
 
   return {
-    requests_per_min: lastMin.filter(m => m.type === "req").length,
-    errors_per_min: lastMin.filter(m => m.type === "err").length,
-    ai_triggers_per_min: lastMin.filter(m => m.type === "ai").length
+    req: lastMin.filter(m => m.type === "req").length,
+    err: lastMin.filter(m => m.type === "err").length,
+    ai: lastMin.filter(m => m.type === "ai").length
   };
 }
 
 // =====================
-// LIGHT SYSTEM (MODULE)
+// VALIDATION
 // =====================
+function validateDuration(d) {
+  if (d == null) return;
+  if (typeof d !== "number" || d < 0 || d > 3600) {
+    throw new Error("Invalid duration");
+  }
+}
 
+function validateMoisture(m) {
+  if (typeof m !== "number" || m < 0 || m > 100) {
+    throw new Error("Invalid moisture");
+  }
+}
+
+function parseTime(str) {
+  if (typeof str !== "string") throw new Error("Invalid time");
+
+  const [h, m] = str.split(":").map(Number);
+
+  if (
+    isNaN(h) || isNaN(m) ||
+    h < 0 || h > 23 ||
+    m < 0 || m > 59
+  ) throw new Error("Invalid time");
+
+  return h * 60 + m;
+}
+
+// =====================
+// RATE LIMIT (SINGLE DEVICE SAFE)
+// =====================
+let lastRequestTime = 0;
+
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  if (now - lastRequestTime < 100) {
+    return res.status(429).json({ error: "Too fast" });
+  }
+  lastRequestTime = now;
+  next();
+}
+
+app.use(rateLimit);
+
+// =====================
+// LOG QUEUE + ROTATION
+// =====================
+let logQueue = [];
+let isFlushing = false;
+
+function queueLog(entry) {
+  logQueue.push(entry);
+}
+
+async function flushLogs() {
+  if (isFlushing || logQueue.length === 0) return;
+
+  isFlushing = true;
+
+  const batch = logQueue.splice(0, 50);
+  const data = batch.map(e => JSON.stringify(e)).join("\n") + "\n";
+
+  try {
+    const stats = await fs.stat(LOG_FILE).catch(() => null);
+
+    if (stats && stats.size > 5 * 1024 * 1024) {
+      await fs.rename(LOG_FILE, LOG_FILE + ".old");
+    }
+
+    await fs.appendFile(LOG_FILE, data);
+  } catch {
+    recordMetric("err");
+  }
+
+  isFlushing = false;
+}
+
+setInterval(flushLogs, 2000);
+
+// =====================
+// LIGHT SYSTEM
+// =====================
 function initLights() {
   const lights = {};
   const timers = {};
@@ -85,56 +159,42 @@ function initLights() {
   return { lights, timers };
 }
 
-function handleLightCommand(d, { light_id, state, duration }) {
-  if (!d.lights.hasOwnProperty(light_id)) {
-    throw new Error("Invalid light_id");
-  }
+function handleLightCommand(d, { light_id, state, duration }, now) {
+  if (!d.lights[light_id]) throw new Error("Invalid light_id");
+
+  validateDuration(duration);
 
   d.lights[light_id] = state;
 
   if (state === "ON" && duration) {
     d.lightTimers[light_id] = {
-      ends_at: Date.now() + duration * 1000
+      ends_at: now + duration * 1000
     };
   } else {
     d.lightTimers[light_id] = null;
   }
 }
 
-function processLightTimers(device_id, d, currentTime) {
+function processLightTimers(device_id, d, now) {
   for (let lid in d.lightTimers) {
     const t = d.lightTimers[lid];
 
-    if (t && currentTime >= t.ends_at) {
+    if (t && now >= t.ends_at) {
       d.lights[lid] = "OFF";
       d.lightTimers[lid] = null;
 
-      appendLog({
-        device_id,
-        type: "light",
-        light_id: lid,
-        event: "AUTO_OFF",
-        time: currentTime
-      });
+      queueLog({ device_id, type: "light", event: "AUTO_OFF", time: now });
     }
   }
 }
 
 // =====================
-// SAFE STATE WRITE
+// STORAGE
 // =====================
 async function saveState() {
   const temp = STATE_FILE + ".tmp";
   await fs.writeFile(temp, JSON.stringify(devices));
   await fs.rename(temp, STATE_FILE);
-}
-
-// =====================
-// APPEND LOG (FAST)
-// =====================
-async function appendLog(entry) {
-  const line = JSON.stringify(entry) + "\n";
-  await fs.appendFile(LOG_FILE, line);
 }
 
 // =====================
@@ -151,7 +211,7 @@ async function init() {
 }
 
 // =====================
-// HELPERS
+// DEVICE
 // =====================
 function ensureDevice(id) {
   if (!id || id.length > MAX_DEVICE_ID) {
@@ -169,7 +229,8 @@ function ensureDevice(id) {
       manualLockUntil: 0,
       tzOffset: 0,
       aiLastRun: 0,
-      activeSession: null
+      activeSession: null,
+      lastSuggestion: null
     };
   }
 }
@@ -189,81 +250,41 @@ function auth(req, res, next) {
 }
 
 // =====================
-// CONTROL WRITE
+// CONTROL
 // =====================
 app.post("/control", auth, async (req, res) => {
   try {
+    const now = Date.now();
     const { device_id, action, duration } = req.body;
+
+    validateDuration(duration);
 
     ensureDevice(device_id);
     const d = devices[device_id];
 
     if (action === "ON") {
       d.pump = "ON";
-      d.manualLockUntil = Date.now() + 10 * 60 * 1000;
+      d.manualLockUntil = now + 10 * 60 * 1000;
 
       if (duration) {
         d.activeSession = {
-          started_at: Date.now(),
-          ends_at: Date.now() + duration * 1000
+          started_at: now,
+          ends_at: now + duration * 1000
         };
       }
 
-      await appendLog({
-        device_id,
-        event: "ON",
-        time: Date.now(),
-        duration: duration || null
-      });
+      queueLog({ device_id, event: "ON", time: now });
     }
 
-    
     if (action === "OFF") {
       d.pump = "OFF";
-      d.manualLockUntil = Date.now() + 10 * 60 * 1000;
-
-      //  CLEAR SESSION
+      d.manualLockUntil = now + 10 * 60 * 1000;
       d.activeSession = null;
 
-      await appendLog({
-        device_id,
-        event: "OFF",
-        time: Date.now()
-      });
+      queueLog({ device_id, event: "OFF", time: now });
     }
 
     dirtyDevices.add(device_id);
-
-    res.json({ ok: true });
-  } catch (e) {
-    recordMetric("err");
-    res.status(400).json({ error: e.message });
-  }
-});
-
-// =====================
-// LIGHT CONTROL
-// =====================
-app.post("/lights", auth, async (req, res) => {
-  try {
-    const { device_id, light_id, state, duration } = req.body;
-
-    ensureDevice(device_id);
-    const d = devices[device_id];
-
-    handleLightCommand(d, { light_id, state, duration });
-
-    await appendLog({
-      device_id,
-      type: "light",
-      light_id,
-      state,
-      duration: duration || null,
-      time: Date.now()
-    });
-
-    dirtyDevices.add(device_id);
-
     res.json({ ok: true });
 
   } catch (e) {
@@ -273,40 +294,45 @@ app.post("/lights", auth, async (req, res) => {
 });
 
 // =====================
-// SENSOR + AI
+// SENSOR + AI (FIXED)
 // =====================
 app.post("/data", auth, async (req, res) => {
   try {
+    const now = Date.now();
     const { device_id, moisture } = req.body;
+
+    validateMoisture(moisture);
 
     ensureDevice(device_id);
     const d = devices[device_id];
 
-    await appendLog({
-      device_id,
-      type: "moisture",
-      value: moisture,
-      time: Date.now()
-    });
+    queueLog({ device_id, type: "moisture", value: moisture, time: now });
 
-    // simple AI with cooldown
+    // ✅ SUGGESTION ONLY (NO AUTOMATION)
     if (
       moisture < 30 &&
-      d.pump === "OFF" &&
-      Date.now() - d.aiLastRun > 10 * 60 * 1000 &&
-      Date.now() > d.manualLockUntil
+      now - d.aiLastRun > 10 * 60 * 1000
     ) {
-      d.pump = "ON";
-      d.aiLastRun = Date.now();
+      d.lastSuggestion = {
+        message: "Moisture low. Consider watering.",
+        level: "warning",
+        time: now
+      };
+
+      d.aiLastRun = now;
 
       recordMetric("ai");
 
-      await appendLog({ device_id, event: "AI_ON", time: Date.now() });
+      queueLog({
+        device_id,
+        event: "AI_SUGGEST",
+        time: now
+      });
     }
 
     dirtyDevices.add(device_id);
-
     res.json({ ok: true });
+
   } catch (e) {
     recordMetric("err");
     res.status(400).json({ error: e.message });
@@ -314,116 +340,87 @@ app.post("/data", auth, async (req, res) => {
 });
 
 // =====================
-// CONTROL READ
-// =====================
-app.get("/control", auth, (req, res) => {
-  try {
-    const { device_id } = req.query;
-    ensureDevice(device_id);
-
-    res.json({
-      ...devices[device_id],
-      server_time: Date.now()
-    });
-  } catch (e) {
-    recordMetric("err");
-    res.status(400).json({ error: e.message });
-  }
-});
-
-// =====================
-// LOOP 
+// LOOP (SAFE)
 // =====================
 setInterval(() => {
-  const currentTime = Date.now(); // ✅ single source of time
+  const now = Date.now();
 
   for (let id in devices) {
-    const d = devices[id];
+    try {
+      const d = devices[id];
 
+      processLightTimers(id, d, now);
 
-    // =====================
-    // SCHEDULE LOGIC (TIMEZONE AWARE)
-    // =====================
-    if (d.schedule && currentTime > d.manualLockUntil) {
-      const t = new Date(currentTime + d.tzOffset * 60000);
-      const cur = t.getHours() * 60 + t.getMinutes();
-
-      const [sh, sm] = d.schedule.start_time.split(":").map(Number);
-      const [eh, em] = d.schedule.end_time.split(":").map(Number);
-
-      const start = sh * 60 + sm;
-      const end = eh * 60 + em;
-
-      const active = start <= end
-        ? cur >= start && cur <= end
-        : cur >= start || cur <= end;
-
-      // =====================
-      // SCHEDULE ON
-      // =====================
-      if (active && d.pump !== "ON" && currentTime > d.manualLockUntil) {
-        d.pump = "ON";
-
-        appendLog({
-          device_id: id,
-          event: "SCHEDULE_ON",
-          time: currentTime
-        });
-      }
-
-      // =====================
-      // SCHEDULE OFF
-      // =====================
-      if (!active && d.pump !== "OFF" && currentTime > d.manualLockUntil) {
+      if (d.activeSession?.ends_at && now >= d.activeSession.ends_at) {
         d.pump = "OFF";
+        d.activeSession = null;
 
-        appendLog({
-          device_id: id,
-          event: "SCHEDULE_OFF",
-          time: currentTime
-        });
+        queueLog({ device_id: id, event: "AUTO_OFF", time: now });
       }
+
+      if (d.schedule && now > d.manualLockUntil) {
+        const t = new Date(now + d.tzOffset * 60000);
+        const cur = t.getHours() * 60 + t.getMinutes();
+
+        const start = parseTime(d.schedule.start_time);
+        const end = parseTime(d.schedule.end_time);
+
+        const active = start <= end
+          ? cur >= start && cur <= end
+          : cur >= start || cur <= end;
+
+        if (active && d.pump !== "ON") {
+          d.pump = "ON";
+          queueLog({ device_id: id, event: "SCHEDULE_ON", time: now });
+        }
+
+        if (!active && d.pump !== "OFF") {
+          d.pump = "OFF";
+          queueLog({ device_id: id, event: "SCHEDULE_OFF", time: now });
+        }
+      }
+
+    } catch (e) {
+      recordMetric("err");
     }
   }
 }, 5000);
 
 // =====================
-// FIREBASE (SAFE)
+// FIRESTORE (NO FREEZE)
 // =====================
 setInterval(async () => {
-  if (dirtyDevices.size > MAX_DIRTY) return;
+  const ids = Array.from(dirtyDevices).slice(0, 50);
 
-  const tasks = [];
-
-  for (let id of dirtyDevices) {
-    tasks.push(db.collection("devices").doc(id).set(devices[id]));
-  }
-
-  try {
-    await Promise.all(tasks);
-    dirtyDevices.clear();
-  } catch (e) {
-    recordMetric("err");
+  for (let id of ids) {
+    try {
+      await db.collection("devices").doc(id).set(devices[id]);
+      dirtyDevices.delete(id);
+    } catch {
+      recordMetric("err");
+    }
   }
 }, 15000);
 
 // =====================
-// HEALTH
-// =====================
-app.get("/health", (req, res) => {
-  res.json({
-    status: "ok",
-    devices: Object.keys(devices).length,
-    metrics: getMetrics()
-  });
-});
-
-// =====================
-// GRACEFUL SHUTDOWN
+// SHUTDOWN (SAFE)
 // =====================
 async function shutdown() {
-  console.log("Saving before shutdown...");
-  await saveState();
+  try {
+    await saveState();
+    await flushLogs();
+
+    const tasks = [];
+    for (let id of dirtyDevices) {
+      tasks.push(db.collection("devices").doc(id).set(devices[id]));
+    }
+
+    await Promise.all(tasks);
+
+  } catch (e) {
+    console.error(e);
+  }
+
   process.exit();
 }
 
@@ -435,6 +432,6 @@ process.on("SIGTERM", shutdown);
 // =====================
 init().then(() => {
   app.listen(3000, () => {
-    console.log("🚀 FINAL V4 BACKEND RUNNING");
+    console.log("🚀 FINAL BACKEND RUNNING");
   });
 });
