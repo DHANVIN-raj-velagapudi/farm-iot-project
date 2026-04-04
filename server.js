@@ -255,7 +255,7 @@ function auth(req, res, next) {
 app.post("/control", auth, async (req, res) => {
   try {
     const now = Date.now();
-    const { device_id, action, duration } = req.body;
+    const { device_id, action, duration, reason } = req.body;
 
     validateDuration(duration);
 
@@ -273,7 +273,7 @@ app.post("/control", auth, async (req, res) => {
         };
       }
 
-      queueLog({ device_id, event: "ON", time: now });
+      queueLog({ device_id, event: "ON", reason: reason || "manual", time: now });
     }
 
     if (action === "OFF") {
@@ -281,7 +281,7 @@ app.post("/control", auth, async (req, res) => {
       d.manualLockUntil = now + 10 * 60 * 1000;
       d.activeSession = null;
 
-      queueLog({ device_id, event: "OFF", time: now });
+      queueLog({ device_id, event: "OFF", reason: reason || "manual", time: now });
     }
 
     dirtyDevices.add(device_id);
@@ -298,7 +298,7 @@ app.post("/control", auth, async (req, res) => {
 app.post("/lights", auth, async (req, res) => {
   try {
     const now = Date.now();
-    const { device_id, light_id, state, duration } = req.body;
+    const { device_id, light_id, state, duration, reason } = req.body;
 
     ensureDevice(device_id);
     const d = devices[device_id];
