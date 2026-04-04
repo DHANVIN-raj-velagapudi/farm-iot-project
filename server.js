@@ -292,6 +292,37 @@ app.post("/control", auth, async (req, res) => {
     res.status(400).json({ error: e.message });
   }
 });
+// =====================
+// LIGHTS  
+// =====================
+app.post("/lights", auth, async (req, res) => {
+  try {
+    const now = Date.now();
+    const { device_id, light_id, state, duration } = req.body;
+
+    ensureDevice(device_id);
+    const d = devices[device_id];
+
+    handleLightCommand(d, { light_id, state, duration }, now);
+
+    queueLog({
+      device_id,
+      type: "light",
+      light_id,
+      state,
+      duration,
+      time: now
+    });
+
+    dirtyDevices.add(device_id);
+
+    res.json({ ok: true });
+
+  } catch (e) {
+    recordMetric("err");
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // =====================
 // SENSOR + AI (FIXED)
