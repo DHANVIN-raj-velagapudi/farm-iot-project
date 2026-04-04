@@ -282,6 +282,7 @@ app.post("/control", auth, async (req, res) => {
       d.pump = "OFF";
       d.manualLockUntil = now + 10 * 60 * 1000;
       d.activeSession = null;
+      
        dirtyDevices.add(device_id);
       
       queueLog({ device_id, event: "OFF", reason: reason || "manual", time: now });
