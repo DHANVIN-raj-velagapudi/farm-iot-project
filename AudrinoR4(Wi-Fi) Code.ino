@@ -1,32 +1,25 @@
 #include <WiFiS3.h>
-#include <PubSubClient.h>
 #include <ArduinoHttpClient.h>
+#include <ArduinoJson.h>
 
 // =====================
-// WIFI (SAFE PLACEHOLDER)
+// WIFI
 // =====================
-const char* ssid = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid = "Airtel_Dinesh";
+const char* password = "800830dh";
 
 // =====================
-// MQTT (SAFE PLACEHOLDER)
+// HTTP BACKEND
 // =====================
-const char* mqtt_server = "YOUR_MQTT_SERVER";
-const int mqtt_port = 1883;
-const char* mqtt_user = "YOUR_MQTT_USER";
-const char* mqtt_pass = "YOUR_MQTT_PASSWORD";
-
-// =====================
-// HTTP BACKEND (SAFE)
-// =====================
-const char* server = "your-backend-url.com";
-WiFiSSLClient httpWifi;
-HttpClient httpClient(httpWifi, server, 80);
+const char* server = "valiant-celebration-production-9ee8.up.railway.app";
+WiFiSSLClient wifi;
+HttpClient client(wifi, server, 443);
 
 // =====================
 // DEVICE
 // =====================
 const char* DEVICE_ID = "Device_1";
+const char* TOKEN = "FARM_SECURE_123";
 
 // =====================
 // PINS
@@ -39,87 +32,40 @@ const char* DEVICE_ID = "Device_1";
 #define LED_RED 4
 #define LED_GREEN 5
 
-#define RELAY_ON  LOW
-#define RELAY_OFF HIGH
+#define RELAY_ON  HIGH
+#define RELAY_OFF LOW
 
 // =====================
-// GLOBALS
+// TIMERS
 // =====================
-WiFiSSLClient wifiClient;
-PubSubClient client(wifiClient);
+unsigned long lastMoisture = 0;
+unsigned long lastSync = 0;
 
-unsigned long lastReconnect = 0;
-unsigned long lastMQTT = 0;
-unsigned long lastMoistureTime = 0;
+const unsigned long moistureInterval = 10000;
+const unsigned long syncInterval = 1000;
 
-const unsigned long moistureInterval = 30000;
-
-// Topics
-char topicPump[50];
-char topicL1[50];
-char topicL2[50];
-char topicL3[50];
+int failCount = 0;
 
 // =====================
 // WIFI CONNECT
 // =====================
 void connectWiFi() {
-  Serial.println("[WIFI] Connecting...");
+  Serial.print("[WIFI] Connecting...");
   WiFi.begin(ssid, password);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
+  int attempts = 0;
+
+  while ((WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0,0,0,0)) && attempts < 20) {
+    delay(500);
     Serial.print(".");
+    attempts++;
   }
 
-  Serial.println("\n[WIFI] Connected!");
-}
-
-// =====================
-// MQTT CALLBACK
-// =====================
-void callback(char* topic, byte* payload, unsigned int length) {
-
-  if (length > 10) return;
-
-  char msg[10];
-  memcpy(msg, payload, length);
-  msg[length] = '\0';
-
-  if (strcmp(topic, topicPump) == 0) {
-    digitalWrite(RELAY_PIN, strcmp(msg, "ON") == 0 ? RELAY_ON : RELAY_OFF);
-  }
-
-  if (strcmp(topic, topicL1) == 0) {
-    digitalWrite(L1_PIN, strcmp(msg, "ON") == 0 ? RELAY_ON : RELAY_OFF);
-  }
-
-  if (strcmp(topic, topicL2) == 0) {
-    digitalWrite(L2_PIN, strcmp(msg, "ON") == 0 ? RELAY_ON : RELAY_OFF);
-  }
-
-  if (strcmp(topic, topicL3) == 0) {
-    digitalWrite(L3_PIN, strcmp(msg, "ON") == 0 ? RELAY_ON : RELAY_OFF);
-  }
-}
-
-// =====================
-// MQTT CONNECT
-// =====================
-void connectMQTT() {
-  if (millis() - lastReconnect < 3000) return;
-
-  lastReconnect = millis();
-
-  if (client.connect(DEVICE_ID, mqtt_user, mqtt_pass,
-                     "Device_1/status", 0, true, "offline")) {
-
-    client.subscribe(topicPump);
-    client.subscribe(topicL1);
-    client.subscribe(topicL2);
-    client.subscribe(topicL3);
-
-    client.publish("Device_1/status", "online", true);
+  if (WiFi.localIP() != IPAddress(0,0,0,0)) {
+    Serial.println("\n[WIFI] Connected!");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("\n[WIFI] FAILED");
   }
 }
 
@@ -127,21 +73,79 @@ void connectMQTT() {
 // SEND MOISTURE
 // =====================
 void sendMoisture(int value) {
+  Serial.print("[HTTP] Sending moisture: ");
+  Serial.println(value);
 
-  httpClient.beginRequest();
-  httpClient.post("/data");
+  String body = "{\"device_id\":\"" + String(DEVICE_ID) + "\",\"moisture\":" + String(value) + "}";
 
-  httpClient.sendHeader("Content-Type", "application/json");
-  httpClient.sendHeader("x-device-token", "YOUR_DEVICE_TOKEN");
+  client.beginRequest();
+  client.post("/data");
 
-  String body = "{\"device_id\":\"Device_1\",\"moisture\":" + String(value) + "}";
+  client.sendHeader("Content-Type", "application/json");
+  client.sendHeader("Content-Length", body.length()); // 🔥 ADD THIS LINE
+  client.sendHeader("x-device-token", TOKEN);
 
-  httpClient.beginBody();
-  httpClient.print(body);
-  httpClient.endRequest();
+  client.beginBody();
+  client.print(body);
+  client.endRequest();
 
-  httpClient.responseStatusCode();
-  httpClient.stop();
+  int status = client.responseStatusCode();
+  Serial.print("[HTTP] Status: ");
+  Serial.println(status);
+  client.stop();
+}
+// =====================
+// GET STATE
+// =====================
+void getState() {
+
+  client.beginRequest();
+  client.get("/state");
+
+  client.sendHeader("x-device-token", TOKEN);
+  client.sendHeader("x-device-id", DEVICE_ID);
+  client.endRequest();
+
+  int status = client.responseStatusCode();
+  String response = client.responseBody();
+  client.stop();
+
+  if (status != 200) {
+    Serial.println("[STATE] HTTP ERROR");
+    failCount++;
+    return;
+  }
+
+  StaticJsonDocument<4096> doc;
+  DeserializationError err = deserializeJson(doc, response);
+
+  if (err) {
+    Serial.println("[STATE] PARSE ERROR");
+    failCount++;
+    return;
+  }
+
+  if (!doc.containsKey(DEVICE_ID)) {
+    Serial.println("[STATE] DEVICE NOT REGISTERED YET");
+    failCount++;
+    return;
+  }
+
+  JsonObject d = doc[DEVICE_ID];
+
+  const char* pump = d["pump"] | "OFF";
+  const char* l1 = d["lights"]["L1"] | "OFF";
+  const char* l2 = d["lights"]["L2"] | "OFF";
+  const char* l3 = d["lights"]["L3"] | "OFF";
+
+  digitalWrite(RELAY_PIN, strcmp(pump, "ON") == 0 ? RELAY_ON : RELAY_OFF);
+  digitalWrite(L1_PIN, strcmp(l1, "ON") == 0 ? RELAY_ON : RELAY_OFF);
+  digitalWrite(L2_PIN, strcmp(l2, "ON") == 0 ? RELAY_ON : RELAY_OFF);
+  digitalWrite(L3_PIN, strcmp(l3, "ON") == 0 ? RELAY_ON : RELAY_OFF);
+
+  Serial.println("[STATE] Updated");
+
+  failCount = 0;
 }
 
 // =====================
@@ -164,14 +168,6 @@ void setup() {
   digitalWrite(L3_PIN, RELAY_OFF);
 
   connectWiFi();
-
-  snprintf(topicPump, sizeof(topicPump), "%s/pump", DEVICE_ID);
-  snprintf(topicL1, sizeof(topicL1), "%s/light/L1", DEVICE_ID);
-  snprintf(topicL2, sizeof(topicL2), "%s/light/L2", DEVICE_ID);
-  snprintf(topicL3, sizeof(topicL3), "%s/light/L3", DEVICE_ID);
-
-  client.setServer(mqtt_server, mqtt_port);
-  client.setCallback(callback);
 }
 
 // =====================
@@ -179,6 +175,7 @@ void setup() {
 // =====================
 void loop() {
 
+  // WIFI FAIL
   if (WiFi.status() != WL_CONNECTED) {
     digitalWrite(LED_RED, HIGH);
     digitalWrite(LED_GREEN, LOW);
@@ -186,42 +183,51 @@ void loop() {
     return;
   }
 
-  if (!client.connected()) {
-    connectMQTT();
+  digitalWrite(LED_GREEN, HIGH);
 
-    digitalWrite(LED_RED, millis() % 500 < 250);
-    digitalWrite(LED_GREEN, LOW);
-
-    if (millis() - lastMQTT > 10000) {
-      digitalWrite(RELAY_PIN, RELAY_OFF);
-      digitalWrite(L1_PIN, RELAY_OFF);
-      digitalWrite(L2_PIN, RELAY_OFF);
-      digitalWrite(L3_PIN, RELAY_OFF);
-    }
-
-  } else {
-    client.loop();
-    lastMQTT = millis();
-
-    digitalWrite(LED_GREEN, HIGH);
-    digitalWrite(LED_RED, LOW);
+  // =====================
+  // STATE FETCH
+  // =====================
+  if (millis() - lastSync > syncInterval) {
+    lastSync = millis();
+    getState();
   }
 
-  if (millis() - lastMoistureTime > moistureInterval) {
+  // =====================
+  // MOISTURE SEND
+  // =====================
+  if (millis() - lastMoisture > moistureInterval) {
 
-    lastMoistureTime = millis();
+    lastMoisture = millis();
 
     int raw = analogRead(A0);
 
-    int dry = 900;
-    int wet = 400;
+    Serial.print("[RAW] ");
+    Serial.println(raw);
 
-    int moisture = map(raw, dry, wet, 0, 100);
-    moisture = constrain(moisture, 0, 100);
+    // safer mapping
+    int moisture = map(raw, 1023, 300, 0, 100);
 
-    Serial.print("[MOISTURE] ");
+    if (moisture < 0) moisture = 0;
+    if (moisture > 100) moisture = 100;
+
+    Serial.print("[MOISTURE CLEAN] ");
     Serial.println(moisture);
 
     sendMoisture(moisture);
+  }
+
+  // =====================
+  // FAILSAFE
+  // =====================
+  if (failCount > 5) {
+    Serial.println("[FAILSAFE] Turning OFF all");
+
+    digitalWrite(RELAY_PIN, RELAY_OFF);
+    digitalWrite(L1_PIN, RELAY_OFF);
+    digitalWrite(L2_PIN, RELAY_OFF);
+    digitalWrite(L3_PIN, RELAY_OFF);
+
+    digitalWrite(LED_RED, millis() % 500 < 250);
   }
 }
