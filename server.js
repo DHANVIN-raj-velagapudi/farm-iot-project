@@ -311,7 +311,7 @@ app.post("/lights", auth, (req, res) => {
       d.lightTimers[light_id] = null;
     }
     
-    mqttClient.publish(`device1/light/${light_id}`, state);
+    mqttClient.publish(`${device_id}/light/${light_id}`, state);
 
     queueLog({ device_id, type: "light", light_id, state, reason: reason || "manual" });
     dirty = true;
