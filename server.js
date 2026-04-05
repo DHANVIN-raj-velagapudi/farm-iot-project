@@ -250,7 +250,27 @@ app.use(requireJson);
 
 // FIX #1: /state now requires auth
 app.get("/state", auth, (req, res) => {
-  res.json(devices);
+  const now = Date.now();
+  const result = {};
+
+  for (const id in devices) {
+    const d = devices[id];
+
+    let moistureDisplay = null;
+
+    if (d.lastMoistureTime && (now - d.lastMoistureTime) < 5 * 60 * 1000) {
+      moistureDisplay = d.lastMoisture;
+    } else {
+      moistureDisplay = "OFFLINE";
+    }
+
+    result[id] = {
+      ...d,
+      moisture: moistureDisplay
+    };
+  }
+
+  res.json(result);
 });
 
 app.post("/ping", auth, (req, res) => {
