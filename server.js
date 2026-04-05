@@ -71,7 +71,13 @@ function validateDuration(d) {
 }
 
 function validateMoisture(m) {
-  if (typeof m !== "number" || m < 0 || m > 100) {
+  if (m === undefined || m === null) {
+    throw new Error("Moisture missing");
+  }
+
+  const val = Number(m);
+
+  if (isNaN(val) || val < 0 || val > 100) {
     throw new Error("Invalid moisture (0-100)");
   }
 }
