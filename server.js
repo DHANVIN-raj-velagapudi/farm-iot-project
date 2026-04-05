@@ -37,6 +37,7 @@ mqttClient.on("close", () => {
 // APP & CONFIG
 // =====================
 const app = express();
+app.use(express.json());
 app.use(cors());
 app.use(express.json({ limit: "10kb" }));
 
