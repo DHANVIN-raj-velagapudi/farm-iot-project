@@ -272,7 +272,11 @@ app.post("/control", auth, (req, res) => {
       d.pump = "ON";
       d.manualLockUntil = now + 10 * 60 * 1000;
       
-      mqttClient.publish("device1/pump", "ON");
+      if (action === "ON") {
+  mqttClient.publish(`${device_id}/pump`, "ON");
+} else {
+  mqttClient.publish(`${device_id}/pump`, "OFF");
+}
       
       if (duration) {
         d.activeSession = { started_at: now, ends_at: now + duration * 1000 };
