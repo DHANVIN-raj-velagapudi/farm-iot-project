@@ -337,6 +337,9 @@ app.post("/data", auth, (req, res) => {
   try {
     const now = Date.now();
     const { device_id, moisture } = req.body;
+    
+    d.lastMoisture = moisture;
+    d.lastMoistureTime = now;
 
     validateMoisture(moisture);
     ensureDevice(device_id);
