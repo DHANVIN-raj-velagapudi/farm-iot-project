@@ -2,7 +2,8 @@
 // IMPORTS
 // =====================
 const express = require("express");
-const fs = require("fs").promises;
+const fs = require("fs");
+const fsp = require("fs").promises;
 const path = require("path");
 const cors = require("cors");
 
@@ -19,12 +20,13 @@ const LOG_FILE = path.join(DATA_DIR, "logs.ndjson");
 
 const DEVICE_TOKEN = process.env.DEVICE_TOKEN || "SECRET123";
 const MAX_DEVICE_ID = 40;
+const DEVICE_ID_REGEX = /^[a-zA-Z0-9_-]+$/; // FIX #8: alphanumeric + dash/underscore only
 
 // =====================
 // STATE & METRICS
 // =====================
 let devices = {};
-let dirty = false; // Flag to trigger disk save
+let dirty = false;
 let metrics = [];
 
 function recordMetric(type) {
@@ -55,6 +57,13 @@ function parseTime(str) {
   return h * 60 + m;
 }
 
+// FIX #8: validate device_id content, not just length
+function validateDeviceId(id) {
+  if (!id || typeof id !== "string" || id.length > MAX_DEVICE_ID || !DEVICE_ID_REGEX.test(id)) {
+    throw new Error("Invalid device_id (alphanumeric, dash, underscore only, max 40 chars)");
+  }
+}
+
 // =====================
 // LOGGING SYSTEM
 // =====================
@@ -65,6 +74,38 @@ function queueLog(entry) {
   logQueue.push({ ...entry, timestamp: new Date().toISOString() });
 }
 
+// FIX #6: synchronous emergency flush for crash/unexpected exit
+function flushLogsSync() {
+  if (logQueue.length === 0) return;
+  const batch = logQueue.splice(0);
+  const data = batch.map(e => JSON.stringify(e)).join("\n") + "\n";
+  try {
+    fs.appendFileSync(LOG_FILE, data);
+  } catch (e) {
+    console.error("Emergency log flush failed:", e);
+  }
+}
+
+// FIX #12: timestamped log rotation — keeps up to 5 rotated files
+async function rotateLogs() {
+  const ts = new Date().toISOString().replace(/[:.]/g, "-");
+  const rotated = `${LOG_FILE}.${ts}`;
+  await fsp.rename(LOG_FILE, rotated);
+
+  // Clean up old rotations — keep only the 5 most recent
+  const dir = path.dirname(LOG_FILE);
+  const base = path.basename(LOG_FILE);
+  const files = (await fsp.readdir(dir))
+    .filter(f => f.startsWith(base + "."))
+    .sort();
+  if (files.length > 5) {
+    const toDelete = files.slice(0, files.length - 5);
+    for (const f of toDelete) {
+      await fsp.unlink(path.join(dir, f)).catch(() => {});
+    }
+  }
+}
+
 async function flushLogs() {
   if (isFlushing || logQueue.length === 0) return;
   isFlushing = true;
@@ -72,13 +113,15 @@ async function flushLogs() {
   const data = batch.map(e => JSON.stringify(e)).join("\n") + "\n";
 
   try {
-    const stats = await fs.stat(LOG_FILE).catch(() => null);
-    if (stats && stats.size > 10 * 1024 * 1024) { // 10MB Rotation
-      await fs.rename(LOG_FILE, LOG_FILE + ".old");
+    const stats = await fsp.stat(LOG_FILE).catch(() => null);
+    if (stats && stats.size > 10 * 1024 * 1024) {
+      await rotateLogs(); // FIX #12: timestamped rotation
     }
-    await fs.appendFile(LOG_FILE, data);
+    await fsp.appendFile(LOG_FILE, data);
   } catch (e) {
     console.error("Log Write Error:", e);
+    // Re-queue failed batch so it's not silently lost
+    logQueue.unshift(...batch);
   }
   isFlushing = false;
 }
@@ -96,8 +139,9 @@ function initLights() {
   return { lights, lightTimers };
 }
 
+// FIX #7: ensureDevice only initializes truly new devices — never clobbers loaded state
 function ensureDevice(id) {
-  if (!id || id.length > MAX_DEVICE_ID) throw new Error("Invalid device_id");
+  validateDeviceId(id); // FIX #8
   if (!devices[id]) {
     const { lights, lightTimers } = initLights();
     devices[id] = {
@@ -114,6 +158,38 @@ function ensureDevice(id) {
       lastSuggestion: null
     };
     dirty = true;
+    queueLog({ device_id: id, type: "system", event: "DEVICE_CREATED" }); // FIX #15
+  }
+}
+
+// FIX #2 & #3: re-arm timers from persisted state on startup
+function rearmTimers() {
+  const now = Date.now();
+  for (const id in devices) {
+    const d = devices[id];
+
+    // Re-arm pump session
+    if (d.activeSession) {
+      if (now >= d.activeSession.ends_at) {
+        // Session already expired while we were down
+        d.pump = "OFF";
+        d.activeSession = null;
+        dirty = true;
+        queueLog({ device_id: id, type: "pump", event: "AUTO_OFF", reason: "expired_during_restart" });
+      }
+      // If still valid, the background loop will handle it naturally — no action needed
+    }
+
+    // Re-arm light timers
+    for (const lid in d.lightTimers || {}) {
+      if (d.lightTimers[lid] && now >= d.lightTimers[lid].ends_at) {
+        // Timer already expired while we were down
+        d.lights[lid] = "OFF";
+        d.lightTimers[lid] = null;
+        dirty = true;
+        queueLog({ device_id: id, type: "light", event: "AUTO_OFF", light_id: lid, reason: "expired_during_restart" });
+      }
+    }
   }
 }
 
@@ -129,9 +205,24 @@ function auth(req, res, next) {
   next();
 }
 
+// FIX #10: consistent JSON content-type check for POST routes
+function requireJson(req, res, next) {
+  if (req.method !== "GET" && !req.is("application/json")) {
+    return res.status(415).json({ error: "Content-Type must be application/json" });
+  }
+  next();
+}
+
+app.use(requireJson);
+
 // =====================
 // ROUTES
 // =====================
+
+// FIX #1: /state now requires auth
+app.get("/state", auth, (req, res) => {
+  res.json(devices);
+});
 
 app.post("/ping", auth, (req, res) => {
   const { device_id } = req.body;
@@ -139,6 +230,7 @@ app.post("/ping", auth, (req, res) => {
     ensureDevice(device_id);
     devices[device_id].lastSeen = Date.now();
     devices[device_id].status = "online";
+    dirty = true;
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
@@ -149,20 +241,22 @@ app.post("/control", auth, (req, res) => {
   try {
     const now = Date.now();
     const { device_id, action, duration, reason } = req.body;
-    
+
+    if (!["ON", "OFF"].includes(action)) throw new Error("action must be ON or OFF");
     validateDuration(duration);
     ensureDevice(device_id);
     const d = devices[device_id];
 
     if (action === "ON") {
       d.pump = "ON";
-      d.manualLockUntil = now + 10 * 60 * 1000; // 10 min lock
+      d.manualLockUntil = now + 10 * 60 * 1000;
       if (duration) {
         d.activeSession = { started_at: now, ends_at: now + duration * 1000 };
       }
     } else {
       d.pump = "OFF";
-      d.manualLockUntil = now + 10 * 60 * 1000;
+      // FIX #11: shorter lock on manual OFF (2 min) so schedule resumes sooner
+      d.manualLockUntil = now + 2 * 60 * 1000;
       d.activeSession = null;
     }
 
@@ -182,7 +276,8 @@ app.post("/lights", auth, (req, res) => {
     ensureDevice(device_id);
     const d = devices[device_id];
 
-    if (!(light_id in d.lights)) throw new Error("Invalid light_id");
+    if (!(light_id in d.lights)) throw new Error("Invalid light_id (use L1–L10)");
+    if (!["ON", "OFF"].includes(state)) throw new Error("state must be ON or OFF");
     validateDuration(duration);
 
     d.lights[light_id] = state;
@@ -211,22 +306,57 @@ app.post("/data", auth, (req, res) => {
 
     queueLog({ device_id, type: "moisture", value: moisture });
 
-    // Suggestion logic
+    // FIX #4: aiLastRun is already persisted to disk — just use it as-is
     if (moisture < 30 && now - d.aiLastRun > 10 * 60 * 1000) {
       d.lastSuggestion = { message: "Low moisture detected.", time: now };
       d.aiLastRun = now;
       recordMetric("ai");
+      dirty = true;
     }
 
-    dirty = true;
     res.json({ ok: true });
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
 });
 
-app.get("/state", (req, res) => {
-  res.json(devices);
+// FIX #14: /schedule POST route to set schedule via API
+app.post("/schedule", auth, (req, res) => {
+  try {
+    const { device_id, start_time, end_time, enabled } = req.body;
+
+    ensureDevice(device_id);
+    const d = devices[device_id];
+
+    if (enabled === false) {
+      d.schedule = null;
+      queueLog({ device_id, type: "schedule", event: "DISABLED" });
+    } else {
+      // Validate times before saving
+      parseTime(start_time);
+      parseTime(end_time);
+      d.schedule = { start_time, end_time };
+      queueLog({ device_id, type: "schedule", event: "SET", start_time, end_time });
+    }
+
+    dirty = true;
+    res.json({ ok: true, schedule: d.schedule });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+
+// FIX #5 & #13: /metrics GET route, auth-protected
+app.get("/metrics", auth, (req, res) => {
+  const summary = metrics.reduce((acc, m) => {
+    acc[m.type] = (acc[m.type] || 0) + 1;
+    return acc;
+  }, {});
+  res.json({
+    total: metrics.length,
+    summary,
+    recent: metrics.slice(-20)
+  });
 });
 
 // =====================
@@ -235,15 +365,15 @@ app.get("/state", (req, res) => {
 setInterval(() => {
   const now = Date.now();
 
-  for (let id in devices) {
+  for (const id in devices) {
     const d = devices[id];
 
-    // 1. Connection Status
+    // 1. Connection status
     if (now - d.lastSeen > 120000) d.status = "offline";
     else d.status = "online";
 
-    // 2. Light Timers
-    for (let lid in d.lightTimers) {
+    // 2. Light timers
+    for (const lid in d.lightTimers) {
       if (d.lightTimers[lid] && now >= d.lightTimers[lid].ends_at) {
         d.lights[lid] = "OFF";
         d.lightTimers[lid] = null;
@@ -252,7 +382,7 @@ setInterval(() => {
       }
     }
 
-    // 3. Pump Session Timer
+    // 3. Pump session timer
     if (d.activeSession && now >= d.activeSession.ends_at) {
       d.pump = "OFF";
       d.activeSession = null;
@@ -260,7 +390,7 @@ setInterval(() => {
       queueLog({ device_id: id, type: "pump", event: "AUTO_OFF", reason: "timer" });
     }
 
-    // 4. Scheduling (Only if not manually locked)
+    // 4. Scheduling (only if not manually locked)
     if (d.schedule && now > d.manualLockUntil) {
       try {
         const localTime = new Date(now + d.tzOffset * 60000);
@@ -268,7 +398,9 @@ setInterval(() => {
         const start = parseTime(d.schedule.start_time);
         const end = parseTime(d.schedule.end_time);
 
-        const shouldBeOn = start <= end ? (cur >= start && cur <= end) : (cur >= start || cur <= end);
+        const shouldBeOn = start <= end
+          ? (cur >= start && cur <= end)
+          : (cur >= start || cur <= end); // overnight wrap
 
         if (shouldBeOn && d.pump !== "ON") {
           d.pump = "ON";
@@ -279,7 +411,10 @@ setInterval(() => {
           dirty = true;
           queueLog({ device_id: id, type: "pump", event: "SCHEDULE_OFF" });
         }
-      } catch (e) { /* Ignore malformed schedules */ }
+      } catch (e) {
+        // FIX #9: log malformed schedule warnings instead of silently ignoring
+        console.warn(`[${id}] Malformed schedule skipped:`, e.message);
+      }
     }
   }
 }, 5000);
@@ -293,8 +428,8 @@ setInterval(async () => {
   if (!dirty) return;
   try {
     const temp = STATE_FILE + ".tmp";
-    await fs.writeFile(temp, JSON.stringify(devices, null, 2));
-    await fs.rename(temp, STATE_FILE);
+    await fsp.writeFile(temp, JSON.stringify(devices, null, 2));
+    await fsp.rename(temp, STATE_FILE);
     dirty = false;
   } catch (e) {
     console.error("Save Error:", e);
@@ -305,14 +440,19 @@ setInterval(async () => {
 // STARTUP & SHUTDOWN
 // =====================
 async function start() {
-  await fs.mkdir(DATA_DIR, { recursive: true });
+  await fsp.mkdir(DATA_DIR, { recursive: true });
+
   try {
-    const saved = await fs.readFile(STATE_FILE, "utf-8");
+    const saved = await fsp.readFile(STATE_FILE, "utf-8");
     devices = JSON.parse(saved);
     console.log("💾 State loaded from disk");
+    rearmTimers(); // FIX #2 & #3: resolve any timers that expired during downtime
   } catch (e) {
     console.log("🆕 Starting with fresh state");
   }
+
+  // FIX #15: startup marker in logs
+  queueLog({ type: "system", event: "SERVER_START", pid: process.pid });
 
   app.listen(3000, () => {
     console.log("🚀 IOT BACKEND ONLINE ON PORT 3000");
@@ -321,10 +461,30 @@ async function start() {
 
 async function shutdown() {
   console.log("Shutting down...");
-  await fs.writeFile(STATE_FILE, JSON.stringify(devices));
-  await flushLogs();
-  process.exit();
+  queueLog({ type: "system", event: "SERVER_STOP" }); // FIX #15
+  try {
+    await fsp.writeFile(STATE_FILE, JSON.stringify(devices, null, 2));
+  } catch (e) {
+    console.error("Final state save failed:", e);
+  }
+  flushLogsSync(); // FIX #6: synchronous flush on clean shutdown
+  process.exit(0);
 }
+
+// FIX #6: catch unexpected crashes and flush logs before dying
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+  queueLog({ type: "system", event: "CRASH", error: err.message });
+  flushLogsSync();
+  process.exit(1);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled rejection:", reason);
+  queueLog({ type: "system", event: "UNHANDLED_REJECTION", error: String(reason) });
+  flushLogsSync();
+  process.exit(1);
+});
 
 process.on("SIGINT", shutdown);
 process.on("SIGTERM", shutdown);
