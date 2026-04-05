@@ -193,7 +193,7 @@ function rearmTimers() {
         d.pump = "OFF";
         d.activeSession = null;
         
-        mqttClient.publish(`${device_id}pump", "OFF");
+        mqttClient.publish(`${id}/pump`, "OFF");
         
         dirty = true;
         queueLog({ device_id: id, type: "pump", event: "AUTO_OFF", reason: "expired_during_restart" });
