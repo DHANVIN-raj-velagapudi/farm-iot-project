@@ -360,9 +360,9 @@ app.post("/data", auth, (req, res) => {
     validateMoisture(moisture);
     ensureDevice(device_id);
 
-    const d = devices[device_id]; // ✅ FIXED POSITION
+    const d = devices[device_id]; 
 
-    d.lastMoisture = moisture;
+    d.lastMoisture = moisture;    
     d.lastMoistureTime = now;
 
     queueLog({ device_id, type: "moisture", value: moisture });
@@ -377,10 +377,10 @@ app.post("/data", auth, (req, res) => {
     res.json({ ok: true });
 
   } catch (e) {
+    console.error("DATA ERROR:", e.message); 
     res.status(400).json({ error: e.message });
   }
 });
-
 // FIX #14: /schedule POST route to set schedule via API
 app.post("/schedule", auth, (req, res) => {
   try {
