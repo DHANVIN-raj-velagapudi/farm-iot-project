@@ -299,26 +299,25 @@ app.post("/control", auth, (req, res) => {
     if (action === "ON") {
       d.pump = "ON";
       d.manualLockUntil = now + 10 * 60 * 1000;
-      
-      if (action === "ON") {
-  mqttClient.publish(`${device_id}/pump`, "ON");
-} else {
-  mqttClient.publish(`${device_id}/pump`, "OFF");
-}
-      
+
+      mqttClient.publish(`${device_id}/pump`, "ON"); // ✅ FIXED
+
       if (duration) {
         d.activeSession = { started_at: now, ends_at: now + duration * 1000 };
       }
+
     } else {
       d.pump = "OFF";
-      // FIX #11: shorter lock on manual OFF (2 min) so schedule resumes sooner
       d.manualLockUntil = now + 2 * 60 * 1000;
       d.activeSession = null;
+
+      mqttClient.publish(`${device_id}/pump`, "OFF"); // ✅ FIXED
     }
 
     queueLog({ device_id, type: "pump", event: action, reason: reason || "manual" });
     dirty = true;
     res.json({ ok: true });
+
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -357,17 +356,17 @@ app.post("/data", auth, (req, res) => {
   try {
     const now = Date.now();
     const { device_id, moisture } = req.body;
-    
-    d.lastMoisture = moisture;
-    d.lastMoistureTime = now;
 
     validateMoisture(moisture);
     ensureDevice(device_id);
-    const d = devices[device_id];
+
+    const d = devices[device_id]; // ✅ FIXED POSITION
+
+    d.lastMoisture = moisture;
+    d.lastMoistureTime = now;
 
     queueLog({ device_id, type: "moisture", value: moisture });
 
-    // FIX #4: aiLastRun is already persisted to disk — just use it as-is
     if (moisture < 30 && now - d.aiLastRun > 10 * 60 * 1000) {
       d.lastSuggestion = { message: "Low moisture detected.", time: now };
       d.aiLastRun = now;
@@ -376,6 +375,7 @@ app.post("/data", auth, (req, res) => {
     }
 
     res.json({ ok: true });
+
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
