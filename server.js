@@ -263,28 +263,21 @@ app.use((req, res, next) => {
 // =====================
 
 // FIX #1: /state now requires auth
+// Replace your current app.get("/state"...) with this:
 app.get("/state", auth, (req, res) => {
+  const deviceId = req.headers["x-device-id"]; // Get ID from header
   const now = Date.now();
-  const result = {};
 
-  for (const id in devices) {
-    const d = devices[id];
+  if (deviceId && devices[deviceId]) {
+    const d = devices[deviceId];
+    const moistureDisplay = (d.lastMoistureTime && (now - d.lastMoistureTime) < 300000) 
+      ? d.lastMoisture : "OFFLINE";
 
-    let moistureDisplay = null;
-
-    if (d.lastMoistureTime && (now - d.lastMoistureTime) < 5 * 60 * 1000) {
-      moistureDisplay = d.lastMoisture;
-    } else {
-      moistureDisplay = "OFFLINE";
-    }
-
-    result[id] = {
-      ...d,
-      moisture: moistureDisplay
-    };
+    return res.json({ [deviceId]: { ...d, moisture: moistureDisplay } });
   }
-
-  res.json(result);
+  
+  // Fallback for dashboard (send everything)
+  res.json(devices); 
 });
 
 app.post("/ping", auth, (req, res) => {
