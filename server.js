@@ -184,6 +184,9 @@ function rearmTimers() {
         // Session already expired while we were down
         d.pump = "OFF";
         d.activeSession = null;
+        
+        mqttClient.publish(`${device_id}pump", "OFF");
+        
         dirty = true;
         queueLog({ device_id: id, type: "pump", event: "AUTO_OFF", reason: "expired_during_restart" });
       }
