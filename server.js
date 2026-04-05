@@ -8,9 +8,9 @@ const path = require("path");
 const cors = require("cors");
 const mqtt = require("mqtt");
 
-const mqttClient = mqtt.connect("mqtts://b8fd1b6049084d47b668fd38fd268120.s1.eu.hivemq.cloud", {
-  username: "dhanvin_raj",
-  password: "YXx!4D!az#n9MdN",
+const mqttClient = mqtt.connect("mqtts://...", {
+  username: process.env.MQTT_USER,
+  password: process.env.MQTT_PASS,
 });
 
 mqttClient.on("connect", () => {
