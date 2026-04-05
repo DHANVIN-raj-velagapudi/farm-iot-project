@@ -6,6 +6,16 @@ const fs = require("fs");
 const fsp = require("fs").promises;
 const path = require("path");
 const cors = require("cors");
+const mqtt = require("mqtt");
+
+const mqttClient = mqtt.connect("mqtts://b8fd1b6049084d47b668fd38fd268120.s1.eu.hivemq.cloud", {
+  username: "dhanvin_raj",
+  password: "YXx!4D!az#n9MdN",
+});
+
+mqttClient.on("connect", () => {
+  console.log("✅ MQTT Connected");
+});
 
 // =====================
 // APP & CONFIG
