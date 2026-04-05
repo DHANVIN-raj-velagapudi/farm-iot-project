@@ -8,21 +8,29 @@ const path = require("path");
 const cors = require("cors");
 const mqtt = require("mqtt");
 
-const mqttClient = mqtt.connect("mqtts://...", {
+const mqttClient = mqtt.connect("mqtts://b8fd1b6049084d47b668fd38fd268120.s1.eu.hivemq.cloud", {
   username: process.env.MQTT_USER,
   password: process.env.MQTT_PASS,
 });
 
+// ✅ CONNECT
 mqttClient.on("connect", () => {
-  mqttClient.on("error", (err) => {
-  console.error("MQTT ERROR:", err);
+  console.log("✅ MQTT Connected");
 });
 
-mqttClient.on("reconnect", () => {
-  console.log("MQTT reconnecting...");
+// ⚠️ ERROR HANDLING
+mqttClient.on("error", (err) => {
+  console.error("❌ MQTT ERROR:", err.message);
 });
-  
-  console.log("✅ MQTT Connected");
+
+// 🔄 RECONNECT
+mqttClient.on("reconnect", () => {
+  console.log("🔄 MQTT reconnecting...");
+});
+
+// ❌ CONNECTION CLOSED
+mqttClient.on("close", () => {
+  console.log("⚠️ MQTT connection closed");
 });
 
 // =====================
