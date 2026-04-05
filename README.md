@@ -1,38 +1,202 @@
-Farm IoT Backend (v1.0.0)
-Author: VELAGAPUDI DHANVIN RAJ
+# 🌱 Farm IoT Backend (Pump + Lights + Moisture)
 
-This is a  Node.js backend designed for Farm IoT systems, specifically optimized for use with ESP32 microcontrollers. It provides a robust, Firebase-free environment for monitoring soil moisture, managing irrigation pumps, and controlling lighting systems.
+A real-time IoT backend for controlling farm devices (pump, lights) and monitoring soil moisture using **MQTT + HTTP hybrid system**.
 
-🚀 Key Features
+---
 
-Real-time Device Monitoring: Tracks "Online/Offline" status based on heartbeats.
+## 🚀 Features
 
-Manual & Automated Control: Support for manual pump/light overrides with safety timers
+* ⚡ Real-time control using MQTT (no delay)
+* 💧 Soil moisture monitoring (HTTP updates)
+* 🔄 Device status tracking (ONLINE / OFFLINE)
+* 💡 Multi-light control (L1, L2, L3…)
+* 🛑 Fail-safe support (device auto-off if offline)
+* 📊 Dashboard-ready API
 
-.Smart Scheduling: Time-based automation for irrigation and lighting.Local Persistence:
+---
 
-Uses high-performance JSON and NDJSON storage for device states and logs, ensuring data is saved even after a restart.
+## 🧠 Architecture
 
-Security: Integrated x-device-token header authentication for secure hardware-to-server communication.
+```
+Mobile App / Dashboard
+        ↓
+     Backend (Node.js)
+        ↓
+   MQTT Broker (HiveMQ / Public)
+        ↓
+      Arduino (R4 WiFi)
+        ↓
+ Pump + Lights + Sensor
+```
 
-🛠️ Quick StartInstall Dependencies:Bashnpm install express cors
-Environment Setup:Set your secure token as an environment variable (optional):Bashexport DEVICE_TOKEN="your_secure_token"
-Run the Server:Bashnode server.js
+---
 
-📡 API Endpoints
-EndpointMethodDescription
+## 📦 Installation
 
-/ping     POSTUpdates device heartbeat and status.
-/control  POSTManually toggles the water pump with optional timers.
-/lights   POSTControls specific light IDs (L1-L10).
-/data     POSTReceives moisture levels and generates low-water warnings.
-/state    GETReturns the current status of all connected devices.
+```bash
+git clone <your-repo>
+cd farm-iot-backend
+npm install
+```
 
-📝 Development StatusCurrent Version: v1.0.0
-This version marks the initial stable release of the backend architecture. It has been streamlined for performance by removing external database dependencies in favor of local, high-speed file storage.Future Roadmap:Implementation of advanced AI-driven predictive analytics.Web-based dashboard for visual data representation.Multi-user authentication and mobile app integration.
+---
 
-⚠️ Disclaimer & LiabilityAs-Is Basis: 
-This software is provided "as is" and "with all faults." The developers make no representations or warranties of any kind concerning the safety, suitability, lack of viruses, inaccuracies, or other harmful components of this software.
+## ▶️ Run Server
 
-No Liability:
-In no event shall the authors or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software. Use at your own risk.
+```bash
+npm start
+```
+
+---
+
+## 🌐 Environment (Recommended)
+
+Set environment variables:
+
+```
+MQTT_USER=your_username
+MQTT_PASS=your_password
+PORT=3000
+```
+
+---
+
+## 🔌 API Endpoints
+
+### 1. Ping (keep device alive)
+
+```
+POST /ping
+```
+
+Body:
+
+```json
+{
+  "device_id": "Device_1"
+}
+```
+
+---
+
+### 2. Control Pump
+
+```
+POST /control
+```
+
+Body:
+
+```json
+{
+  "device_id": "Device_1",
+  "action": "ON"
+}
+```
+
+---
+
+### 3. Control Lights
+
+```
+POST /lights
+```
+
+Body:
+
+```json
+{
+  "device_id": "Device_1",
+  "light_id": "L1",
+  "state": "ON"
+}
+```
+
+---
+
+### 4. Send Moisture Data
+
+```
+POST /data
+```
+
+Body:
+
+```json
+{
+  "device_id": "Device_1",
+  "moisture": 45
+}
+```
+
+---
+
+### 5. Get State
+
+```
+GET /state
+```
+
+Response:
+
+```json
+{
+  "Device_1": {
+    "pump": "ON",
+    "lights": {
+      "L1": "OFF"
+    },
+    "moisture": 45
+  }
+}
+```
+
+---
+
+## ⚡ MQTT Topics
+
+| Action | Topic               | Payload  |
+| ------ | ------------------- | -------- |
+| Pump   | `Device_1/pump`     | ON / OFF |
+| Light  | `Device_1/light/L1` | ON / OFF |
+
+---
+
+## 🧪 Device Status Logic
+
+* Moisture updated within **5 min** → shows value
+* No update > 5 min → shows `"OFFLINE"`
+
+---
+
+## ☁️ Deployment
+
+Tested on:
+
+* Railway ✅
+* Render ✅
+
+---
+
+## ⚠️ Notes
+
+* MQTT handles **real-time control**
+* HTTP handles **data + keep-alive**
+* Arduino R4 works best **without SSL (HTTP + MQTT 1883)**
+
+---
+
+## 🧑‍💻 Author
+
+**Velagapudi Dhanvin Raj**
+
+---
+
+## 🔥 Future Scope
+
+* Auto irrigation (based on moisture)
+* Alerts & notifications
+* Multi-device scaling
+* AI-based watering decisions
+
+---
