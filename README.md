@@ -3,7 +3,17 @@ Author: VELAGAPUDI DHANVIN RAJ
 
 This is a  Node.js backend designed for Farm IoT systems, specifically optimized for use with ESP32 microcontrollers. It provides a robust, Firebase-free environment for monitoring soil moisture, managing irrigation pumps, and controlling lighting systems.
 
-🚀 Key FeaturesReal-time Device Monitoring: Tracks "Online/Offline" status based on heartbeats.Manual & Automated Control: Support for manual pump/light overrides with safety timers.Smart Scheduling: Time-based automation for irrigation and lighting.Local Persistence: Uses high-performance JSON and NDJSON storage for device states and logs, ensuring data is saved even after a restart.Security: Integrated x-device-token header authentication for secure hardware-to-server communication.
+🚀 Key Features
+
+Real-time Device Monitoring: Tracks "Online/Offline" status based on heartbeats.
+
+Manual & Automated Control: Support for manual pump/light overrides with safety timers
+
+.Smart Scheduling: Time-based automation for irrigation and lighting.Local Persistence:
+
+Uses high-performance JSON and NDJSON storage for device states and logs, ensuring data is saved even after a restart.
+
+Security: Integrated x-device-token header authentication for secure hardware-to-server communication.
 
 🛠️ Quick StartInstall Dependencies:Bashnpm install express cors
 Environment Setup:Set your secure token as an environment variable (optional):Bashexport DEVICE_TOKEN="your_secure_token"
