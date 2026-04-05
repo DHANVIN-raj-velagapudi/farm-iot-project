@@ -14,6 +14,14 @@ const mqttClient = mqtt.connect("mqtts://...", {
 });
 
 mqttClient.on("connect", () => {
+  mqttClient.on("error", (err) => {
+  console.error("MQTT ERROR:", err);
+});
+
+mqttClient.on("reconnect", () => {
+  console.log("MQTT reconnecting...");
+});
+  
   console.log("✅ MQTT Connected");
 });
 
