@@ -260,6 +260,9 @@ app.post("/control", auth, (req, res) => {
     if (action === "ON") {
       d.pump = "ON";
       d.manualLockUntil = now + 10 * 60 * 1000;
+      
+      mqttClient.publish("device1/pump", "ON");
+      
       if (duration) {
         d.activeSession = { started_at: now, ends_at: now + duration * 1000 };
       }
