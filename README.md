@@ -1,219 +1,71 @@
-# 🌱 Farm IoT Backend (Pump + Lights + Moisture)
+# Farm IoT
 
-A real-time IoT backend for controlling farm devices (pump, lights) and monitoring soil moisture using **MQTT + HTTP hybrid system**.
+A self-hosted controller for a farm/garden irrigation pump and grow
+lights, built on an Arduino Uno R4 WiFi and a small Node.js backend. Reads
+soil moisture, drives the pump and up to 10 lights per device, and
+supports both manual control and a daily on/off schedule.
 
----
+## Features
 
-## 🚀 Features
+- Manual pump/light control, optionally timed (auto-off after N seconds)
+- Daily schedule per device, including overnight windows (e.g. 22:00-06:00)
+- Soil moisture tracking with a low-moisture hint
+- Multi-device support out of the box
+- Crash-safe persistence (atomic writes, timers resolved correctly across restarts)
+- No hardcoded secrets anywhere in the repo — see [docs/HARDWARE.md](docs/HARDWARE.md)
 
-* ⚡ Real-time control using MQTT (no delay)
-* 💧 Soil moisture monitoring (HTTP updates)
-* 🔄 Device status tracking (ONLINE / OFFLINE)
-* 💡 Multi-light control (L1, L2, L3…)
-* 🛑 Fail-safe support (device auto-off if offline)
-* 📊 Dashboard-ready API
-
----
-
-## 🧠 Architecture
+## Architecture
 
 ```
-Mobile App / Dashboard
-        ↓
-     Backend (Node.js)
-        ↓
-   MQTT Broker (HiveMQ / Public)
-        ↓
-      Arduino (R4 WiFi)
-        ↓
- Pump + Lights + Sensor
+Arduino R4 WiFi ──HTTPS poll /state (1s) + POST /data (10s)──▶ Node.js backend ──▶ data/devices.json
 ```
 
----
+The firmware polls the backend for its target pump/light state and reports
+moisture readings; all logic (schedules, timers, manual overrides) lives
+on the backend. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the
+full design, including why this uses HTTP polling rather than MQTT.
 
-## 📦 Installation
+## Quick start (backend)
 
 ```bash
-git clone <your-repo>
-cd farm-iot-backend
 npm install
+DEVICE_TOKEN=$(openssl rand -hex 16) npm start
 ```
 
----
-
-## ▶️ Run Server
+The server refuses to start without `DEVICE_TOKEN` set — see
+[docs/API.md](docs/API.md) for the full endpoint reference and
+[docs/HARDWARE.md](docs/HARDWARE.md) for flashing the Arduino and
+deploying the backend.
 
 ```bash
-npm start
+npm test   # runs the validation unit tests (node's built-in test runner)
 ```
 
----
-
-## 🌐 Environment (Recommended)
-
-Set environment variables:
+## Project layout
 
 ```
-MQTT_USER=your_username
-MQTT_PASS=your_password
-DEVICE_TOKEN=your_device_token
-PORT=3000
+server.js                          Entry point
+src/                                Backend source (see docs/ARCHITECTURE.md)
+test/                               Unit tests
+firmware/FarmIoTController/         Arduino sketch
+docs/                               Architecture, API reference, hardware setup
 ```
 
-`DEVICE_TOKEN` is required — the server refuses to start without it (no
-insecure default).
+## Security
 
----
+- A single `DEVICE_TOKEN`, sent as `x-device-token`, authenticates every
+  request. Treat it like a password.
+- WiFi credentials and the device token live only in
+  `firmware/FarmIoTController/arduino_secrets.h`, which is gitignored and
+  never committed. See [docs/HARDWARE.md](docs/HARDWARE.md).
+- This project previously had real credentials committed to git history.
+  That history has since been scrubbed and the credentials rotated — if
+  you forked or cloned this repo before that cleanup, discard that copy.
 
-## 🔐 Arduino secrets
+## License
 
-The `.ino` sketch reads WiFi credentials and the device token from
-`arduino_secrets.h`, which is **gitignored and never committed**.
+MIT — see [LICENSE](LICENSE).
 
-```bash
-cp arduino_secrets.h.example arduino_secrets.h
-# then edit arduino_secrets.h with your real WiFi SSID/password and a
-# DEVICE_TOKEN that matches the value set on your backend host
-```
+## Author
 
----
-
-## 🔌 API Endpoints
-
-### 1. Ping (keep device alive)
-
-```
-POST /ping
-```
-
-Body:
-
-```json
-{
-  "device_id": "Device_1"
-}
-```
-
----
-
-### 2. Control Pump
-
-```
-POST /control
-```
-
-Body:
-
-```json
-{
-  "device_id": "Device_1",
-  "action": "ON"
-}
-```
-
----
-
-### 3. Control Lights
-
-```
-POST /lights
-```
-
-Body:
-
-```json
-{
-  "device_id": "Device_1",
-  "light_id": "L1",
-  "state": "ON"
-}
-```
-
----
-
-### 4. Send Moisture Data
-
-```
-POST /data
-```
-
-Body:
-
-```json
-{
-  "device_id": "Device_1",
-  "moisture": 45
-}
-```
-
----
-
-### 5. Get State
-
-```
-GET /state
-```
-
-Response:
-
-```json
-{
-  "Device_1": {
-    "pump": "ON",
-    "lights": {
-      "L1": "OFF"
-    },
-    "moisture": 45
-  }
-}
-```
-
----
-
-## ⚡ MQTT Topics
-
-| Action | Topic               | Payload  |
-| ------ | ------------------- | -------- |
-| Pump   | `Device_1/pump`     | ON / OFF |
-| Light  | `Device_1/light/L1` | ON / OFF |
-
----
-
-## 🧪 Device Status Logic
-
-* Moisture updated within **5 min** → shows value
-* No update > 5 min → shows `"OFFLINE"`
-
----
-
-## ☁️ Deployment
-
-Tested on:
-
-* Railway ✅
-* Render ✅
-
----
-
-## ⚠️ Notes
-
-* MQTT handles **real-time control**
-* HTTP handles **data + keep-alive**
-* Arduino R4 works best **without SSL (HTTP + MQTT 1883)**
-
----
-
-## 🧑‍💻 Author
-
-**Velagapudi Dhanvin Raj**
-
----
-
-## 🔥 Future Scope
-
-* Auto irrigation (based on moisture)
-* Alerts & notifications
-* Multi-device scaling
-* AI-based watering decisions
-
----
+Velagapudi Dhanvin Raj
