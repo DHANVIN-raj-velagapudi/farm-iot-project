@@ -56,7 +56,24 @@ Set environment variables:
 ```
 MQTT_USER=your_username
 MQTT_PASS=your_password
+DEVICE_TOKEN=your_device_token
 PORT=3000
+```
+
+`DEVICE_TOKEN` is required — the server refuses to start without it (no
+insecure default).
+
+---
+
+## 🔐 Arduino secrets
+
+The `.ino` sketch reads WiFi credentials and the device token from
+`arduino_secrets.h`, which is **gitignored and never committed**.
+
+```bash
+cp arduino_secrets.h.example arduino_secrets.h
+# then edit arduino_secrets.h with your real WiFi SSID/password and a
+# DEVICE_TOKEN that matches the value set on your backend host
 ```
 
 ---

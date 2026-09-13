@@ -2,11 +2,16 @@
 #include <ArduinoHttpClient.h>
 #include <ArduinoJson.h>
 
+// Real credentials live in arduino_secrets.h, which is gitignored and never
+// committed. Copy arduino_secrets.h.example -> arduino_secrets.h and fill it
+// in locally before uploading this sketch.
+#include "arduino_secrets.h"
+
 // =====================
 // WIFI
 // =====================
-const char* ssid = "ROTATED_WIFI_SSID_REMOVED";
-const char* password = "ROTATED_WIFI_PASSWORD_REMOVED";
+const char* ssid = SECRET_WIFI_SSID;
+const char* password = SECRET_WIFI_PASSWORD;
 
 // =====================
 // HTTP BACKEND
@@ -19,7 +24,7 @@ HttpClient client(wifi, server, 443);
 // DEVICE
 // =====================
 const char* DEVICE_ID = "Device_1";
-const char* TOKEN = "ROTATED_DEVICE_TOKEN_REMOVED";
+const char* TOKEN = SECRET_DEVICE_TOKEN;
 
 // =====================
 // PINS

@@ -45,7 +45,13 @@ const DATA_DIR = path.join(__dirname, "data");
 const STATE_FILE = path.join(DATA_DIR, "devices.json");
 const LOG_FILE = path.join(DATA_DIR, "logs.ndjson");
 
-const DEVICE_TOKEN = process.env.DEVICE_TOKEN || "SECRET123";
+// FIX #16: no insecure hardcoded fallback — a weak default token defeats the
+// auth check entirely. Require an explicit, real DEVICE_TOKEN at startup.
+const DEVICE_TOKEN = process.env.DEVICE_TOKEN;
+if (!DEVICE_TOKEN) {
+  console.error("❌ DEVICE_TOKEN env var is not set. Refusing to start with no auth token.");
+  process.exit(1);
+}
 const MAX_DEVICE_ID = 40;
 const DEVICE_ID_REGEX = /^[a-zA-Z0-9_-]+$/; // FIX #8: alphanumeric + dash/underscore only
 
